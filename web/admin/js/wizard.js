@@ -3,7 +3,8 @@ import { api } from './api.js';
 import { h, icon, toast } from './ui.js';
 import { colorPicker, fontPicker } from './design.js';
 
-export function runWizard(schema) {
+// onCancel: offered when there are other sites to go back to.
+export function runWizard(schema, { onCancel } = {}) {
   return new Promise((resolve) => {
     const state = { name: '', kind: 'business', primary: '', fonts: '' };
     const kinds = schema.starters;
@@ -19,7 +20,8 @@ export function runWizard(schema) {
         sub ? h('p', { class: 'muted' }, sub) : null,
         body,
         h('div', { class: 'wizard-actions' },
-          back ? h('button', { type: 'button', class: 'btn ghost', onClick: back }, 'Back') : h('span'),
+          back ? h('button', { type: 'button', class: 'btn ghost', onClick: back }, 'Back')
+            : onCancel ? h('button', { type: 'button', class: 'btn ghost', onClick: onCancel }, 'Back to my sites') : h('span'),
           nextBtn)));
       return nextBtn;
     };

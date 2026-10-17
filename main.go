@@ -17,34 +17,30 @@ import (
 
 	"sitesmith/internal/render"
 	"sitesmith/internal/server"
-	"sitesmith/internal/store"
 	"sitesmith/web"
 )
 
 func main() {
-	dataDir := flag.String("data", "site-data", "folder that holds the site database, images and published files")
+	dataDir := flag.String("data", "site-data", "folder that holds your sites (one subfolder per site)")
 	addr := flag.String("addr", "127.0.0.1:4321", "address for the editor (it only accepts local connections)")
 	noOpen := flag.Bool("no-browser", false, "don't open the editor in a browser on start")
 	flag.Parse()
-
-	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
-		log.Fatal(err)
-	}
-	st, err := store.Open(filepath.Join(*dataDir, "site.db"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer st.Close()
 
 	r, err := render.New()
 	if err != nil {
 		log.Fatal(err)
 	}
+	ws, err := server.OpenWorkspace(*dataDir, r)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ws.Close()
+
 	admin, err := fs.Sub(web.Admin, "admin")
 	if err != nil {
 		log.Fatal(err)
 	}
-	srv := server.New(st, r, *dataDir, admin)
+	srv := server.New(ws, r, admin)
 
 	ln, err := listen(*addr)
 	if err != nil {

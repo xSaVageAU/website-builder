@@ -10,13 +10,23 @@ A free, simple website builder. It runs as one program on your own computer and 
 go run .
 ```
 
-This opens the editor in your browser at http://127.0.0.1:4321. Everything lives in `./site-data/`:
+This opens the editor in your browser at http://127.0.0.1:4321.
+
+### Several sites
+
+Click the site name in the top bar to open **Your sites**. From there you can switch to another site, start a **New site** (which runs the setup wizard), or remove one. One site is open at a time, and switching saves your changes first.
+
+Everything lives in `./site-data/`:
 
 | Path | What |
 |---|---|
-| `site.db` | All content (SQLite). Back up the folder and you've backed up the site. |
-| `media/` | Uploaded images, resized |
-| `published/` | The last published site: plain HTML/CSS/images |
+| `sites/<id>/site.db` | All of a site's content (SQLite). Back up a site's folder and you've backed up that site. |
+| `sites/<id>/media/` | Its uploaded images, resized |
+| `sites/<id>/published/` | Its last published build: plain HTML/CSS/images |
+| `trash/` | Removed sites. Move a folder back into `sites/` to restore it. |
+| `state.json` | Which site was open last |
+
+A data folder from before multi-site support (with `site.db` at the top level) is moved into `sites/` automatically the first time you start Sitesmith.
 
 Flags: `-data <folder>`, `-addr 127.0.0.1:4321`, `-no-browser`.
 

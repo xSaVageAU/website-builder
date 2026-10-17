@@ -53,7 +53,20 @@ a { color: var(--accent-text); }
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; }
 .logo-dot { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, #5c7cfa, #7950f2); display: inline-block; }
-.site-title { color: var(--muted); padding-left: 12px; border-left: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.site-title { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text); font-weight: 500; padding: 5px 8px 5px 10px; margin-left: 4px; border: 1px solid transparent; border-radius: 8px; background: none; }
+.site-title:hover { background: var(--hover); border-color: var(--border); }
+.site-title .site-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+.site-title .icon { width: 15px; height: 15px; color: var(--muted); }
+
+.site-list { display: grid; gap: 6px; margin-top: 12px; }
+.site-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.site-row.current { border-color: var(--accent); background: var(--accent-soft); }
+.site-avatar { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #5c7cfa, #7950f2); color: white; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+.site-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.site-info strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.site-info .muted { font-size: 12.5px; }
+.site-actions { display: flex; align-items: center; gap: 4px; }
+.badge.on { background: var(--accent); color: white; }
 
 .save-status { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
 .save-status .icon { width: 15px; height: 15px; }

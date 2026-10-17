@@ -6,6 +6,7 @@ import { mountPageEditor } from './editor.js';
 import { mountDesign, mountSettings } from './design.js';
 import { mountMediaLibrary, loadMedia } from './media.js';
 import { runWizard } from './wizard.js';
+import { showSites, hasOtherSites, cancelNewSite } from './sites.js';
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -206,10 +207,12 @@ app.preview = (() => {
 
 const treeEl = h('div', { class: 'tree' });
 const main = h('main', { class: 'editor-col' });
-const siteTitle = h('div', { class: 'site-title' });
+const siteName = h('span', { class: 'site-name' });
+const siteTitle = h('button', { type: 'button', class: 'site-title', title: 'Switch site or start a new one',
+  onClick: () => showSites(() => app.saver.flush()) }, siteName, icon('chevron'));
 const sideNav = h('nav', { class: 'side-nav' });
 
-app.renderTopbar = () => { siteTitle.textContent = app.site.name; };
+app.renderTopbar = () => { siteName.textContent = app.site.name; };
 
 function renderSideNav() {
   const item = (view, label, ic) => h('button', { type: 'button', class: 'side-link' + (app.view === view ? ' on' : ''),
@@ -408,7 +411,7 @@ async function start() {
   app.schema = await api.schema();
   app.site = await api.site();
   if (!app.site.setupDone) {
-    await runWizard(app.schema);
+    await runWizard(app.schema, (await hasOtherSites()) ? { onCancel: () => cancelNewSite().catch((e) => toast(e.message, 'error')) } : {});
     app.site = await api.site();
   }
   await loadMedia();

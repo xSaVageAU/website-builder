@@ -26,6 +26,12 @@ async function req(method, url, body) {
 
 export const api = {
   schema: () => req('GET', '/api/schema'),
+
+  sites: () => req('GET', '/api/sites'),
+  createSite: () => req('POST', '/api/sites'),
+  openSite: (id) => req('POST', `/api/sites/${id}/open`),
+  removeSite: (id) => req('DELETE', `/api/sites/${id}`),
+
   site: () => req('GET', '/api/site'),
   saveSite: (site) => req('PUT', '/api/site', site),
   setup: (opts) => req('POST', '/api/setup', opts),

@@ -28,60 +28,110 @@ import (
 )
 
 type Server struct {
-	st       *store.Store
-	r        *render.Renderer
-	builder  *build.Builder
-	mediaDir string
-	distDir  string
-	admin    fs.FS
-	buildMu  sync.Mutex
+	ws      *Workspace
+	r       *render.Renderer
+	admin   fs.FS
+	buildMu sync.Mutex
 }
 
-func New(st *store.Store, r *render.Renderer, dataDir string, admin fs.FS) *Server {
-	s := &Server{
-		st:       st,
-		r:        r,
-		mediaDir: filepath.Join(dataDir, "media"),
-		distDir:  filepath.Join(dataDir, "published"),
-		admin:    admin,
+func New(ws *Workspace, r *render.Renderer, admin fs.FS) *Server {
+	return &Server{ws: ws, r: r, admin: admin}
+}
+
+// c is the open site. Only valid inside a handler wrapped by onSite.
+func (s *Server) c() *siteCtx { return s.ws.cur }
+
+// onSite holds the workspace's read lock for the whole request, so switching
+// sites waits for in-flight requests instead of closing their database.
+func (s *Server) onSite(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.ws.mu.RLock()
+		defer s.ws.mu.RUnlock()
+		h(w, r)
 	}
-	s.builder = &build.Builder{Store: st, Renderer: r, MediaDir: s.mediaDir, OutDir: s.distDir}
-	return s
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	site := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, s.onSite(h)) }
 
 	mux.Handle("GET /{$}", http.HandlerFunc(s.adminIndex))
 	mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServerFS(s.admin)))
-
 	mux.HandleFunc("GET /api/schema", s.schema)
-	mux.HandleFunc("GET /api/site", s.getSite)
-	mux.HandleFunc("PUT /api/site", s.putSite)
-	mux.HandleFunc("POST /api/setup", s.setup)
 
-	mux.HandleFunc("GET /api/pages", s.listPages)
-	mux.HandleFunc("POST /api/pages", s.createPage)
-	mux.HandleFunc("GET /api/pages/{id}", s.getPage)
-	mux.HandleFunc("PUT /api/pages/{id}", s.updatePage)
-	mux.HandleFunc("DELETE /api/pages/{id}", s.deletePage)
-	mux.HandleFunc("POST /api/pages/{id}/move", s.movePage)
-	mux.HandleFunc("POST /api/pages/{id}/duplicate", s.duplicatePage)
-	mux.HandleFunc("GET /api/pages/{id}/revisions", s.revisions)
-	mux.HandleFunc("POST /api/pages/{id}/revisions/{rev}/restore", s.restoreRevision)
+	mux.HandleFunc("GET /api/sites", s.onSite(s.listSites))
+	mux.HandleFunc("POST /api/sites", s.createSite)
+	mux.HandleFunc("POST /api/sites/{id}/open", s.openSite)
+	mux.HandleFunc("DELETE /api/sites/{id}", s.trashSite)
 
-	mux.HandleFunc("GET /api/media", s.listMedia)
-	mux.HandleFunc("POST /api/media", s.uploadMedia)
-	mux.HandleFunc("DELETE /api/media/{id}", s.deleteMedia)
+	site("GET /api/site", s.getSite)
+	site("PUT /api/site", s.putSite)
+	site("POST /api/setup", s.setup)
 
-	mux.HandleFunc("POST /api/publish", s.publish)
-	mux.HandleFunc("GET /api/export", s.export)
-	mux.HandleFunc("POST /api/open-folder", s.openFolder)
+	site("GET /api/pages", s.listPages)
+	site("POST /api/pages", s.createPage)
+	site("GET /api/pages/{id}", s.getPage)
+	site("PUT /api/pages/{id}", s.updatePage)
+	site("DELETE /api/pages/{id}", s.deletePage)
+	site("POST /api/pages/{id}/move", s.movePage)
+	site("POST /api/pages/{id}/duplicate", s.duplicatePage)
+	site("GET /api/pages/{id}/revisions", s.revisions)
+	site("POST /api/pages/{id}/revisions/{rev}/restore", s.restoreRevision)
 
-	mux.HandleFunc("GET /preview/", s.preview)
-	mux.Handle("GET /site/", http.StripPrefix("/site", http.FileServer(http.Dir(s.distDir))))
+	site("GET /api/media", s.listMedia)
+	site("POST /api/media", s.uploadMedia)
+	site("DELETE /api/media/{id}", s.deleteMedia)
+
+	site("POST /api/publish", s.publish)
+	site("GET /api/export", s.export)
+	site("POST /api/open-folder", s.openFolder)
+
+	site("GET /preview/", s.preview)
+	site("GET /site/", func(w http.ResponseWriter, r *http.Request) {
+		http.StripPrefix("/site", http.FileServer(http.Dir(s.c().distDir))).ServeHTTP(w, r)
+	})
 
 	return guard(mux)
+}
+
+// ---------- sites ----------
+
+func (s *Server) listSites(w http.ResponseWriter, r *http.Request) {
+	list, err := s.ws.List()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, list)
+}
+
+func (s *Server) createSite(w http.ResponseWriter, r *http.Request) {
+	id, err := s.ws.Create()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 201, map[string]string{"id": id})
+}
+
+func (s *Server) openSite(w http.ResponseWriter, r *http.Request) {
+	if err := s.ws.Switch(r.PathValue("id")); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) trashSite(w http.ResponseWriter, r *http.Request) {
+	if err := s.ws.Trash(r.PathValue("id")); err != nil {
+		if errors.Is(err, errBadID) {
+			fail(w, 404, "Not found.")
+			return
+		}
+		fail(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // guard keeps the editor private to this machine: it rejects requests for
@@ -121,7 +171,7 @@ func fail(w http.ResponseWriter, status int, msg string) {
 }
 
 func (s *Server) failErr(w http.ResponseWriter, err error) {
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, errBadID) {
 		fail(w, http.StatusNotFound, "Not found.")
 		return
 	}
@@ -162,7 +212,7 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 // ---------- site ----------
 
 func (s *Server) getSite(w http.ResponseWriter, r *http.Request) {
-	site, err := s.st.Site()
+	site, err := s.c().st.Site()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -176,13 +226,13 @@ func (s *Server) putSite(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid request.")
 		return
 	}
-	cur, err := s.st.Site()
+	cur, err := s.c().st.Site()
 	if err != nil {
 		s.failErr(w, err)
 		return
 	}
 	site.SetupDone = cur.SetupDone || site.SetupDone
-	if err := s.st.SaveSite(site); err != nil {
+	if err := s.c().st.SaveSite(site); err != nil {
 		s.failErr(w, err)
 		return
 	}
@@ -200,7 +250,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid request.")
 		return
 	}
-	cur, err := s.st.Site()
+	cur, err := s.c().st.Site()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -224,7 +274,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	if req.Fonts != "" {
 		site.Theme.Fonts = req.Fonts
 	}
-	if err := starter.Apply(s.st, k, site); err != nil {
+	if err := starter.Apply(s.c().st, k, site); err != nil {
 		s.failErr(w, err)
 		return
 	}
@@ -240,7 +290,7 @@ type pageItem struct {
 }
 
 func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
-	t, err := s.st.Tree()
+	t, err := s.c().st.Tree()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -255,7 +305,7 @@ func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
-	p, err := s.st.Page(pathID(r, "id"))
+	p, err := s.c().st.Page(pathID(r, "id"))
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -272,7 +322,7 @@ func (s *Server) createPage(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid request.")
 		return
 	}
-	p, err := s.st.CreatePage(req.ParentID, req.Title, nil)
+	p, err := s.c().st.CreatePage(req.ParentID, req.Title, nil)
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -294,7 +344,7 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 		}
 		u.Blocks = &clean
 	}
-	p, err := s.st.UpdatePage(pathID(r, "id"), u)
+	p, err := s.c().st.UpdatePage(pathID(r, "id"), u)
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -303,7 +353,7 @@ func (s *Server) updatePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deletePage(w http.ResponseWriter, r *http.Request) {
-	if err := s.st.DeletePage(pathID(r, "id")); err != nil {
+	if err := s.c().st.DeletePage(pathID(r, "id")); err != nil {
 		s.failErr(w, err)
 		return
 	}
@@ -319,7 +369,7 @@ func (s *Server) movePage(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid request.")
 		return
 	}
-	if err := s.st.MovePage(pathID(r, "id"), req.ParentID, req.Index); err != nil {
+	if err := s.c().st.MovePage(pathID(r, "id"), req.ParentID, req.Index); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			s.failErr(w, err)
 			return
@@ -331,7 +381,7 @@ func (s *Server) movePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) duplicatePage(w http.ResponseWriter, r *http.Request) {
-	t, err := s.st.Tree()
+	t, err := s.c().st.Tree()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -341,7 +391,7 @@ func (s *Server) duplicatePage(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "Not found.")
 		return
 	}
-	p, err := s.st.CreatePage(src.ParentID, src.Title+" (copy)", src.Blocks)
+	p, err := s.c().st.CreatePage(src.ParentID, src.Title+" (copy)", src.Blocks)
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -352,12 +402,12 @@ func (s *Server) duplicatePage(w http.ResponseWriter, r *http.Request) {
 			idx = i + 1
 		}
 	}
-	if err := s.st.MovePage(p.ID, src.ParentID, idx); err != nil {
+	if err := s.c().st.MovePage(p.ID, src.ParentID, idx); err != nil {
 		s.failErr(w, err)
 		return
 	}
 	desc, menu, pub := src.Description, src.ShowInMenu, false
-	p, err = s.st.UpdatePage(p.ID, store.PageUpdate{Description: &desc, ShowInMenu: &menu, Published: &pub})
+	p, err = s.c().st.UpdatePage(p.ID, store.PageUpdate{Description: &desc, ShowInMenu: &menu, Published: &pub})
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -366,7 +416,7 @@ func (s *Server) duplicatePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) revisions(w http.ResponseWriter, r *http.Request) {
-	list, err := s.st.Revisions(pathID(r, "id"))
+	list, err := s.c().st.Revisions(pathID(r, "id"))
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -375,7 +425,7 @@ func (s *Server) revisions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
-	p, err := s.st.RestoreRevision(pathID(r, "id"), pathID(r, "rev"))
+	p, err := s.c().st.RestoreRevision(pathID(r, "id"), pathID(r, "rev"))
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -386,7 +436,7 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 // ---------- media ----------
 
 func (s *Server) listMedia(w http.ResponseWriter, r *http.Request) {
-	list, err := s.st.ListMedia()
+	list, err := s.c().st.ListMedia()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -419,13 +469,13 @@ func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 			problems = append(problems, fh.Filename+": "+err.Error())
 			continue
 		}
-		m, err := media.Process(s.mediaDir, data, fh.Filename)
+		m, err := media.Process(s.c().mediaDir, data, fh.Filename)
 		if err != nil {
 			problems = append(problems, fh.Filename+": "+err.Error())
 			continue
 		}
-		if err := s.st.AddMedia(m); err != nil {
-			media.Remove(s.mediaDir, m)
+		if err := s.c().st.AddMedia(m); err != nil {
+			media.Remove(s.c().mediaDir, m)
 			problems = append(problems, fh.Filename+": "+err.Error())
 			continue
 		}
@@ -436,7 +486,7 @@ func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	m, err := s.st.Media(id)
+	m, err := s.c().st.Media(id)
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -452,18 +502,18 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.st.DeleteMedia(id); err != nil {
+	if err := s.c().st.DeleteMedia(id); err != nil {
 		s.failErr(w, err)
 		return
 	}
-	media.Remove(s.mediaDir, m)
+	media.Remove(s.c().mediaDir, m)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // mediaUsage lists where an image appears, so people don't delete a photo
 // that's on a live page without knowing.
 func (s *Server) mediaUsage(id int64) ([]string, error) {
-	site, err := s.st.Site()
+	site, err := s.c().st.Site()
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +521,7 @@ func (s *Server) mediaUsage(id int64) ([]string, error) {
 	if site.Logo == id {
 		used = append(used, "Site logo")
 	}
-	t, err := s.st.Tree()
+	t, err := s.c().st.Tree()
 	if err != nil {
 		return nil, err
 	}
@@ -511,7 +561,7 @@ func usesImage(fields []blocks.Field, data map[string]any, id int64) bool {
 func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	s.buildMu.Lock()
 	defer s.buildMu.Unlock()
-	rep, err := s.builder.Build()
+	rep, err := s.c().builder.Build()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -522,24 +572,24 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	s.buildMu.Lock()
 	defer s.buildMu.Unlock()
-	if _, err := s.builder.Build(); err != nil {
+	if _, err := s.c().builder.Build(); err != nil {
 		s.failErr(w, err)
 		return
 	}
-	site, _ := s.st.Site()
+	site, _ := s.c().st.Site()
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, store.Slugify(site.Name)))
-	if err := build.Zip(s.distDir, w); err != nil {
+	if err := build.Zip(s.c().distDir, w); err != nil {
 		log.Printf("zip: %v", err)
 	}
 }
 
 func (s *Server) openFolder(w http.ResponseWriter, r *http.Request) {
-	if _, err := os.Stat(s.distDir); err != nil {
+	if _, err := os.Stat(s.c().distDir); err != nil {
 		fail(w, 400, "Publish the site first.")
 		return
 	}
-	abs, _ := filepath.Abs(s.distDir)
+	abs, _ := filepath.Abs(s.c().distDir)
 	if err := OpenPath(abs); err != nil {
 		s.failErr(w, err)
 		return
@@ -571,7 +621,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/preview")
 	switch {
 	case path == "/assets/site.css":
-		site, err := s.st.Site()
+		site, err := s.c().st.Site()
 		if err != nil {
 			s.failErr(w, err)
 			return
@@ -581,14 +631,14 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, s.r.CSS(site.Theme))
 		return
 	case strings.HasPrefix(path, "/media/"):
-		http.StripPrefix("/preview/media", http.FileServer(http.Dir(s.mediaDir))).ServeHTTP(w, r)
+		http.StripPrefix("/preview/media", http.FileServer(http.Dir(s.c().mediaDir))).ServeHTTP(w, r)
 		return
 	}
 	if !strings.HasSuffix(path, "/") {
 		http.Redirect(w, r, r.URL.Path+"/", http.StatusFound)
 		return
 	}
-	site, err := s.r.LoadSite(s.st)
+	site, err := s.r.LoadSite(s.c().st)
 	if err != nil {
 		s.failErr(w, err)
 		return
