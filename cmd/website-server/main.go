@@ -26,10 +26,10 @@ func main() {
 	dir := flag.String("dir", "", `folder that holds the website (default: the "site" folder next to this program)`)
 	port := flag.Int("port", 0, "port to listen on (default: $PORT, or 8080)")
 	local := flag.Bool("local", false, "only accept visitors from this computer")
-	noBrowser := flag.Bool("no-browser", false, "don't open the website in a browser on start")
+	openBrowser := flag.Bool("open", false, "open the website in your browser on start")
 	flag.Parse()
 
-	if err := run(*dir, *port, *local, !*noBrowser); err != nil {
+	if err := run(*dir, *port, *local, *openBrowser); err != nil {
 		fmt.Fprintln(os.Stderr, "\n  Couldn't start the website:", err)
 		// Double-clicked on Windows, the window would vanish before anyone could read this.
 		if runtime.GOOS == "windows" {

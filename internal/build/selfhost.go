@@ -64,7 +64,7 @@ func SelfHostReadme(siteName, goos, server string) []byte {
 	line("")
 	line("    -port 80        Use another port (or set the PORT environment variable).")
 	line("    -local          Only allow visitors from this computer.")
-	line("    -no-browser     Don't open a browser when starting.")
+	line("    -open           Also open the website in your browser.")
 	line("    -dir <folder>   Serve a different folder.")
 	line("")
 	line("")

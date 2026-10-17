@@ -10,7 +10,7 @@ A free, simple website builder. It runs as one program on your own computer and 
 go run .
 ```
 
-This opens the editor in your browser at http://127.0.0.1:4321.
+Then open the editor at http://127.0.0.1:4321 (the address is also printed when it starts).
 
 ### Several sites
 
@@ -28,7 +28,7 @@ Everything lives in `./site-data/`:
 
 A data folder from before multi-site support (with `site.db` at the top level) is moved into `sites/` automatically the first time you start Sitesmith.
 
-Flags: `-data <folder>`, `-addr 127.0.0.1:4321`, `-no-browser`.
+Flags: `-data <folder>`, `-addr 127.0.0.1:4321`, `-open` (also open the editor in your browser).
 
 ### Building a release
 
@@ -50,7 +50,7 @@ website-server(.exe)  a small program that hosts it
 README.txt            how to start it, written for that platform
 ```
 
-Running `website-server` serves the `site` folder next to it on port 8080, or the next free port. It prints the address on this computer and on the local network. Flags: `-port` (or `$PORT`), `-local`, `-dir`, `-no-browser`. It serves clean URLs, the 404 page and sensible cache headers, and refuses folder listings, hidden files and anything outside `site`.
+Running `website-server` serves the `site` folder next to it on port 8080, or the next free port. It prints the address on this computer and on the local network. Flags: `-port` (or `$PORT`), `-local`, `-dir`, `-open`. It serves clean URLs, the 404 page and sensible cache headers, and refuses folder listings, hidden files and anything outside `site`.
 
 The server (`cmd/website-server`) uses only Go's standard library. `tools/build` compiles it for Windows, Mac (Apple silicon and Intel), Linux and Raspberry Pi. It compresses each copy into `internal/serverbin/bin/`, which git ignores, so no binaries live in the repo.
 
@@ -133,7 +133,7 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 ## Project layout
 
 ```
-main.go                 starts the editor, opens the browser
+main.go                 starts the editor
 cmd/website-server      the small server that ships inside self-hosting downloads
 tools/build             release build: compiles the servers, then Sitesmith
 internal/store          SQLite: site settings, page tree, versions, media, redirects

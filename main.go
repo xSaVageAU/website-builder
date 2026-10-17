@@ -23,7 +23,7 @@ import (
 func main() {
 	dataDir := flag.String("data", "site-data", "folder that holds your sites (one subfolder per site)")
 	addr := flag.String("addr", "127.0.0.1:4321", "address for the editor (it only accepts local connections)")
-	noOpen := flag.Bool("no-browser", false, "don't open the editor in a browser on start")
+	openBrowser := flag.Bool("open", false, "open the editor in your browser on start")
 	flag.Parse()
 
 	r, err := render.New()
@@ -50,7 +50,7 @@ func main() {
 	abs, _ := filepath.Abs(*dataDir)
 	fmt.Printf("\n  Sitesmith is running.\n\n  Editor:     %s\n  Your files: %s\n\n  Close this window to stop.\n\n", url, abs)
 
-	if !*noOpen {
+	if *openBrowser {
 		go func() {
 			time.Sleep(300 * time.Millisecond)
 			_ = server.OpenPath(url)
