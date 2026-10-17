@@ -77,6 +77,7 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 - **Fine-tuning per section, in steps.** Each section has a collapsed **Style** drawer: space above/below (None to XL), height (hero and call to action: Short to Full screen), background (Plain, Soft, Brand, Contrast) and content width (Narrow to Full). Every control starts at *Auto*, which keeps the theme's look, and only the choices you change are stored. Backgrounds swap the theme's colour variables inside the section, so text, cards, links and buttons adapt without extra rules.
 - **Page titles are optional.** Pages show their name as a heading unless they start with a Hero (whose headline takes its place) or have **Show title** switched off. A switched-off title stays in the page as a hidden `<h1>`, so search engines and screen readers still get it.
 - **Header and footer are set in Design.** Header: layout (logo left or centred), background, sticky on/off, and an optional button (e.g. "Book now") that links to a page or address. Footer: text, a row of links, social profile icons (Instagram, Facebook, X, LinkedIn, YouTube, TikTok, GitHub, email), background, and whether to show the © line. The header and footer backgrounds work the same way as section backgrounds.
+- **Escape hatches for power users.** **Custom CSS** in Design is added after the theme on every page. Each section's Style drawer has an advanced **Custom CSS** box scoped to that section: plain properties style the section, and nested rules like `h2 { … }` style things inside it (native CSS nesting). The **Custom HTML** section publishes embed code exactly as written. In the editor preview it runs in a sandboxed frame, so third-party scripts can't reach the editor.
 - **Starter content is coaching.** The onboarding wizard creates real pages whose placeholder text explains what to write.
 - **Image processing on upload:** photos are rotated upright (EXIF orientation), resized to 480/960/1600/2400 widths, re-encoded (which strips GPS metadata), and served with `srcset`.
 - **Autosave, but nothing counts until you publish.** Edits save about 0.6s after you stop typing, so nothing is ever lost. The live site only changes when you click Publish. The editor marks each page with unpublished changes, and the Publish button shows how many there are.
@@ -88,7 +89,7 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 
 - Onboarding wizard with 6 starter sites (business, portfolio, restaurant, organisation, personal, blank)
 - Page tree with drag-and-drop nesting and reordering, drafts, menu visibility, home page selection, duplicate, delete
-- 12 section types: hero, heading, text, image, columns, button, call to action, gallery, quote, video (YouTube/Vimeo, privacy-enhanced), subpage list, divider
+- 13 section types: hero, heading, text, image, columns, button, call to action, gallery, quote, video (YouTube/Vimeo, privacy-enhanced), subpage list, divider, custom HTML
 - Live preview that updates in place, with desktop and phone views. Clicking a section in the preview selects it in the editor, and clicking a link in the preview opens that page.
 - Design panel: logo, colour, fonts, corners, spacing, light/dark, heading size, header and footer
 - Media library with upload, drag-and-drop, and a warning before deleting an image that's in use

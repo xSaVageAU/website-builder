@@ -29,6 +29,7 @@ type Option struct {
 //	link      "page:<id>", a URL, mailto: or tel:
 //	choice    one of Options
 //	toggle    true/false
+//	code      raw HTML for the Custom HTML section, published unchanged
 //	list      repeated group of Fields
 type Field struct {
 	Key         string   `json:"key"`
@@ -60,7 +61,13 @@ type Block struct {
 	Type  string         `json:"type"`
 	Data  map[string]any `json:"data"`
 	Style map[string]any `json:"style,omitempty"` // only the choices that differ from "auto"
+	// CSS is the section's own custom CSS (advanced). Plain declarations apply
+	// to the section, nested rules (h2 { … }) to things inside it.
+	CSS string `json:"css,omitempty"`
 }
+
+// MaxCSS caps custom CSS, per section and site-wide.
+const MaxCSS = 50_000
 
 // StyleFields are the fine-tuning controls shared by every section type.
 // Each is a few steps rather than a free number, so any combination still
@@ -243,6 +250,15 @@ var Types = []Type{
 		Type: "divider", Label: "Divider", Icon: "divider",
 		Description: "A thin line to separate parts of a page.",
 	},
+	{
+		Type: "html", Label: "Custom HTML", Icon: "code",
+		Description: "Paste embed code from another service (booking widget, newsletter form, map…) or write your own HTML.",
+		Fields: []Field{
+			{Key: "code", Kind: "code", Label: "HTML",
+				Placeholder: "<iframe src=\"https://…\"></iframe>",
+				Help:        "Published exactly as written, scripts included, so only paste code you trust. In the editor's preview it runs in an isolated frame."},
+		},
+	},
 }
 
 var byType = func() map[string]*Type {
@@ -324,6 +340,7 @@ func Normalize(raw json.RawMessage) (json.RawMessage, error) {
 		Type  string         `json:"type"`
 		Data  map[string]any `json:"data"`
 		Style map[string]any `json:"style"`
+		CSS   string         `json:"css"`
 	}
 	if len(raw) == 0 {
 		raw = json.RawMessage("[]")
@@ -343,7 +360,7 @@ func Normalize(raw json.RawMessage) (json.RawMessage, error) {
 			id = newID()
 		}
 		seen[id] = true
-		out = append(out, Block{ID: id, Type: b.Type, Data: normalizeFields(t.Fields, b.Data), Style: normalizeStyle(t, b.Style)})
+		out = append(out, Block{ID: id, Type: b.Type, Data: normalizeFields(t.Fields, b.Data), Style: normalizeStyle(t, b.Style), CSS: clip(strings.TrimSpace(b.CSS), MaxCSS)})
 	}
 	return json.Marshal(out)
 }
@@ -387,6 +404,10 @@ func normalizeValue(f Field, v any) any {
 	case "textarea":
 		s, _ := v.(string)
 		return clip(s, 5000)
+	case "code":
+		// Deliberately not sanitised: it's the site owner's own code.
+		s, _ := v.(string)
+		return clip(s, 200_000)
 	case "rich":
 		s, _ := v.(string)
 		return SanitizeRich(clip(s, 100_000))

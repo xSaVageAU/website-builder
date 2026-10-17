@@ -1,7 +1,7 @@
 // The page editor: page settings at the top, then the list of sections.
 import { api } from './api.js';
 import { h, icon, iconButton, modal, toast, slugify, uid, clone } from './ui.js';
-import { renderFields, defaultsFor, toggle } from './fields.js';
+import { renderFields, defaultsFor, toggle, codeArea } from './fields.js';
 import { askGoBack } from './versions.js';
 
 export function mountPageEditor(root, page, app) {
@@ -140,8 +140,9 @@ export function mountPageEditor(root, page, app) {
     const label = h('span', { class: 'style-summary' });
     const describe = () => {
       const picked = fields.filter((f) => b.style[f.key]).map((f) => f.options.find((o) => o.value === b.style[f.key])?.label);
-      label.textContent = picked.length ? picked.join(', ') : 'Auto';
       reset.hidden = !picked.length;
+      if (b.css?.trim()) picked.push('Custom CSS');
+      label.textContent = picked.length ? picked.join(', ') : 'Auto';
     };
     const onChange = () => {
       for (const k of Object.keys(b.style)) if (!b.style[k]) delete b.style[k];
@@ -152,7 +153,12 @@ export function mountPageEditor(root, page, app) {
     const drawer = h('details', { class: 'style-drawer', open: styleOpen.has(b.id),
       onToggle: () => { drawer.open ? styleOpen.add(b.id) : styleOpen.delete(b.id); } },
       h('summary', {}, icon('palette'), 'Style', label),
-      h('div', { class: 'style-fields' }, renderFields(fields, b.style, { ...ctx, onChange }), reset));
+      h('div', { class: 'style-fields' }, renderFields(fields, b.style, { ...ctx, onChange }), reset,
+        // Power users: CSS for just this section.
+        h('details', { class: 'advanced', open: !!b.css },
+          h('summary', {}, icon('code'), 'Custom CSS', h('span', { class: 'muted' }, 'advanced')),
+          codeArea(b.css || '', 'padding: 4rem;\nh2 { color: crimson; }', (v) => { b.css = v; describe(); save(); }, 4),
+          h('div', { class: 'field-help' }, 'Applies only to this section. Plain properties style the section itself; rules like h2 { … } style things inside it.'))));
     describe();
     return drawer;
   };

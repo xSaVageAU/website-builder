@@ -309,6 +309,7 @@ p { margin: 0 0 1em; }
 .bg-brand blockquote p::before { color: var(--on-primary); }
 
 /* Shown only in the editor preview, never in the published site. */
+.embed-preview { display: block; width: 100%; height: 150px; border: 0; }
 .placeholder {
   border: 2px dashed var(--border);
   border-radius: var(--radius);

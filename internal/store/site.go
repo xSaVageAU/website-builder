@@ -59,6 +59,8 @@ type Site struct {
 	Theme      Theme  `json:"theme"`
 	Header     Header `json:"header"`
 	Footer     Footer `json:"footer"`
+	// CustomCSS is added after the theme's stylesheet (advanced).
+	CustomCSS string `json:"customCss"`
 }
 
 var (
@@ -136,6 +138,7 @@ func (s *Site) Normalize() {
 	s.Theme.Density = oneOf(s.Theme.Density, DensityOptions)
 	s.Theme.Mode = oneOf(s.Theme.Mode, ModeOptions)
 	s.Theme.Heading = oneOf(s.Theme.Heading, HeadingOptions)
+	s.CustomCSS = clip(s.CustomCSS, blocks.MaxCSS)
 
 	s.Header.Layout = oneOf(s.Header.Layout, LayoutOptions)
 	s.Header.Background = oneOf(s.Header.Background, []string{"", "soft", "brand", "contrast"})

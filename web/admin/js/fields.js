@@ -39,6 +39,8 @@ export function renderField(f, data, ctx) {
     case 'textarea':
       return wrap(f, autoGrow(h('textarea', { class: 'input' + (f.big ? ' big' : ''), rows: 2, placeholder: f.placeholder || '',
         onInput: (e) => set(e.target.value) }), data[f.key] ?? ''));
+    case 'code':
+      return wrap(f, codeArea(data[f.key] ?? '', f.placeholder, set));
     case 'rich':
       return wrap(f, richText(data[f.key] ?? '', f.placeholder, set, ctx));
     case 'image':
@@ -77,6 +79,20 @@ export function segmented(options, value, onPick) {
 export function toggle(value, onPick, label = '') {
   const input = h('input', { type: 'checkbox', checked: value, onChange: () => onPick(input.checked) });
   return h('label', { class: 'switch' }, input, h('span', { class: 'switch-track' }), label ? h('span', {}, label) : null);
+}
+
+// ---------- code ----------
+
+// A plain monospace box for HTML or CSS. Tab indents instead of leaving the field.
+export function codeArea(value, placeholder, set, rows = 6) {
+  const ta = h('textarea', { class: 'input code', rows, spellcheck: 'false', autocapitalize: 'off', placeholder: placeholder || '',
+    onInput: () => set(ta.value),
+    onKeydown: (e) => {
+      if (e.key !== 'Tab' || e.shiftKey) return;
+      e.preventDefault();
+      document.execCommand('insertText', false, '  ');
+    } });
+  return autoGrow(ta, value);
 }
 
 // ---------- rich text ----------

@@ -83,7 +83,7 @@ func (r *Renderer) LoadSite(st *store.Store) (*Site, error) {
 	for _, m := range list {
 		media[m.ID] = m
 	}
-	css := r.CSS(info.Theme)
+	css := r.CSS(info)
 	sum := sha256.Sum256([]byte(css))
 	return &Site{Info: info, Tree: tree, Media: media, CSS: css, CSSVersion: hex.EncodeToString(sum[:4])}, nil
 }
@@ -132,7 +132,8 @@ type PageView struct {
 	Nav         []NavItem
 	Crumbs      []Crumb
 	ShowTitle   bool
-	TitleHidden bool // page title switched off: only a hidden <h1> for search engines and screen readers
+	SectionCSS  template.CSS // custom CSS of this page's sections, each scoped to its section
+	TitleHidden bool         // page title switched off: only a hidden <h1> for search engines and screen readers
 	Blocks      []BlockView
 	FooterText  string
 	Header      HeaderView
@@ -309,8 +310,20 @@ func (c *pageCtx) blockView(b blocks.Block, page *store.Page) BlockView {
 		if items, _ := d["items"].([]map[string]any); len(items) == 0 {
 			d["items"] = []map[string]any{}
 		}
+	case "html":
+		code, _ := d["code"].(string)
+		d["html"] = template.HTML(code)
+		if c.mode == Preview {
+			// Third-party scripts must not run with the editor's privileges,
+			// so the preview shows the code in a sandboxed frame.
+			d["srcdoc"] = embedPreviewDoc(c.url("/assets/site.css")+"?v="+c.site.CSSVersion, code)
+		}
 	}
-	return BlockView{ID: b.ID, Type: b.Type, D: d, Preview: c.mode == Preview, Class: styleClass(b.Style)}
+	class := styleClass(b.Style)
+	if b.CSS != "" {
+		class = strings.TrimSpace(class + " s-" + b.ID)
+	}
+	return BlockView{ID: b.ID, Type: b.Type, D: d, Preview: c.mode == Preview, Class: class}
 }
 
 // styleClass turns style choices into the classes site.css understands.
@@ -426,16 +439,21 @@ func (r *Renderer) RenderPage(w io.Writer, s *Site, page *store.Page, mode Mode,
 	heroFirst := len(list) > 0 && list[0].Type == "hero"
 	v.ShowTitle = !heroFirst && !page.HideTitle
 	v.TitleHidden = !heroFirst && page.HideTitle
+	var sectionCSS strings.Builder
 	for i, b := range list {
 		bv := c.blockView(b, page)
 		bv.First = i == 0 && heroFirst
 		v.Blocks = append(v.Blocks, bv)
+		if b.CSS != "" {
+			sectionCSS.WriteString(scopeCSS(b.ID, b.CSS))
+		}
 		if v.OGImage == "" && s.Info.BaseURL != "" {
 			if img, ok := bv.D["image"].(*Image); ok && img != nil {
 				v.OGImage = absolutize(s.Info.BaseURL, page.Path, img.Src)
 			}
 		}
 	}
+	v.SectionCSS = template.CSS(sectionCSS.String())
 	return r.tmpl.ExecuteTemplate(w, "page", v)
 }
 
@@ -523,7 +541,8 @@ var fontStacks = map[string][2]string{ // heading, body
 }
 
 // CSS builds the stylesheet for a theme: tokens first, then the base styles.
-func (r *Renderer) CSS(t store.Theme) string {
+func (r *Renderer) CSS(site store.Site) string {
+	t := site.Theme
 	fonts := fontStacks[t.Fonts]
 	radius := map[string][3]string{ // card, small, button
 		"rounded": {"16px", "10px", "999px"},
@@ -571,6 +590,12 @@ func (r *Renderer) CSS(t store.Theme) string {
 	}
 	b.WriteString("}\n\n")
 	b.WriteString(r.baseCSS)
+	if site.CustomCSS != "" {
+		// Last, so it can override anything above.
+		b.WriteString("\n/* ---------- Custom CSS (Design > Custom CSS) ---------- */\n\n")
+		b.WriteString(site.CustomCSS)
+		b.WriteString("\n")
+	}
 	return b.String()
 }
 
@@ -627,4 +652,25 @@ func mixUntil(c string, target, ratio float64, bg string) string {
 		}
 	}
 	return c
+}
+
+// scopeCSS wraps a section's custom CSS so it only applies to that section.
+// Plain declarations style the section; nested rules (h2 { … }) style things
+// inside it, using native CSS nesting.
+func scopeCSS(id, css string) string {
+	// The CSS goes inside a <style> element, so it must never be able to close
+	// it. \3c is CSS for "<", and works inside strings too.
+	css = strings.ReplaceAll(css, "<", `\3c `)
+	return ".s-" + id + " {\n" + css + "\n}\n"
+}
+
+// embedPreviewDoc is the page shown inside a Custom HTML section's sandboxed
+// preview frame: the site's stylesheet, the code, and a script that reports
+// the content height so the frame can grow to fit.
+func embedPreviewDoc(cssHref, code string) string {
+	return `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">` +
+		`<link rel="stylesheet" href="` + template.HTMLEscapeString(cssHref) + `">` +
+		`<style>body{min-height:0;display:block;background:transparent}</style></head><body>` + code +
+		`<script>(function(){function s(){parent.postMessage({type:"embed-size",h:document.documentElement.scrollHeight},"*")}` +
+		`new ResizeObserver(s).observe(document.documentElement);addEventListener("load",s);s()})()</script></body></html>`
 }

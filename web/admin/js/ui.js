@@ -56,6 +56,7 @@ const paths = {
   list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
   listOl: '<path d="M10 6h10M10 12h10M10 18h10M4 5h1v4M4 9h2M4 15h2l-2 3h2"/>',
   chevron: '<path d="M6 9l6 6 6-6"/>',
+  code: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
   warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   hero: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10h10M9 14h6"/>',
   heading: '<path d="M6 4v16M18 4v16M6 12h12"/>',

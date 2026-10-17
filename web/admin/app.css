@@ -435,3 +435,12 @@ select.input { padding-right: 28px; }
 .social-fields { display: grid; gap: 6px; }
 .social-field { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .social-field .input { padding: 6px 9px; }
+
+/* Code fields: Custom HTML section, custom CSS */
+.input.code { font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.55; tab-size: 2; white-space: pre; overflow-x: auto; }
+.advanced { margin: 4px 0 10px; }
+.advanced summary { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); padding: 4px 0 8px; list-style: none; }
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced summary .icon { width: 15px; height: 15px; }
+.advanced summary .muted { font-weight: 400; font-size: 12px; }
+.advanced[open] summary { color: var(--text); }

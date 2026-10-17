@@ -760,7 +760,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = io.WriteString(w, s.r.CSS(site.Theme))
+		_, _ = io.WriteString(w, s.r.CSS(site))
 		return
 	case strings.HasPrefix(path, "/media/"):
 		http.StripPrefix("/preview/media", http.FileServer(http.Dir(s.c().mediaDir))).ServeHTTP(w, r)

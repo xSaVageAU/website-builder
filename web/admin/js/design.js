@@ -1,6 +1,6 @@
 // Design (look & feel) and Settings panels. Both edit the site record.
 import { h, icon } from './ui.js';
-import { renderField, segmented, toggle } from './fields.js';
+import { renderField, segmented, toggle, codeArea } from './fields.js';
 
 export const SWATCHES = ['#3b5bdb', '#7048e8', '#0f766e', '#2f9e44', '#c2410c', '#e03131', '#d6336c', '#212529'];
 
@@ -65,7 +65,10 @@ export function mountDesign(root, app) {
       h('div', { class: 'field inline' }, h('span', { class: 'field-label' }, 'Heading size'),
         segmented([{ value: 'small', label: 'Smaller' }, { value: 'normal', label: 'Normal' }, { value: 'large', label: 'Larger' }], t.heading, (v) => { t.heading = v; save(); }))),
     headerSection(site, ctx, save),
-    footerSection(site, ctx, save)));
+    footerSection(site, ctx, save),
+    section('Custom CSS',
+      h('p', { class: 'field-help' }, 'For power users: CSS added after the theme, on every page, so it can override anything. Leave it empty if you don’t need it.'),
+      codeArea(site.customCss || '', '.brand { letter-spacing: 0.05em; }', (v) => { site.customCss = v; save(); }, 5))));
 }
 
 const inline = (label, control) => h('div', { class: 'field inline' }, h('span', { class: 'field-label' }, label), control);

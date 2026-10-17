@@ -289,3 +289,48 @@ func TestHeaderAndFooter(t *testing.T) {
 		t.Error("heading size token missing")
 	}
 }
+
+func TestCustomCSSAndHTML(t *testing.T) {
+	st, b := setup(t, "blank")
+	tree, _ := st.Tree()
+	home := tree.Pages[0]
+	site, _ := st.Site()
+	site.CustomCSS = ".brand { letter-spacing: 0.1em; }"
+	st.SaveSite(site)
+	blocks := json.RawMessage(`[
+		{"id":"sec1","type":"text","data":{"html":"<p>x</p>"},"css":"padding: 4rem;\nh2 { color: red; }\n</style><script>alert(1)</script>"},
+		{"id":"emb","type":"html","data":{"code":"<div id=\"widget\"><script>window.w=1</script></div>"}}]`)
+	if _, err := st.UpdatePage(home.ID, store.PageUpdate{Blocks: &blocks}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	html := read(t, b, "index.html")
+	if !strings.Contains(html, `class="b b-text s-sec1"`) || !strings.Contains(html, ".s-sec1 {") || !strings.Contains(html, "h2 { color: red; }") {
+		t.Errorf("section CSS not scoped to its section:\n%s", html)
+	}
+	if strings.Contains(html, "</style><script>alert(1)") {
+		t.Error("section CSS could close the <style> element")
+	}
+	// Published: the embed code goes out exactly as written.
+	if !strings.Contains(html, `<div id="widget"><script>window.w=1</script></div>`) {
+		t.Error("custom HTML not published as written")
+	}
+	if !strings.Contains(read(t, b, "assets/site.css"), ".brand { letter-spacing: 0.1em; }") {
+		t.Error("site-wide custom CSS missing from site.css")
+	}
+
+	// Preview: the same code runs in a sandboxed frame instead.
+	r, _ := render.New()
+	s, _ := r.LoadSite(st)
+	var buf bytes.Buffer
+	p, _ := st.Page(home.ID)
+	if err := r.RenderPage(&buf, s, p, render.Preview, nil); err != nil {
+		t.Fatal(err)
+	}
+	prev := buf.String()
+	if !strings.Contains(prev, `sandbox="allow-scripts allow-popups allow-forms"`) || strings.Contains(prev, `<div id="widget"><script>`) {
+		t.Error("preview runs custom HTML outside the sandbox")
+	}
+}

@@ -65,6 +65,9 @@
 {{- if and .Preview (not .Blocks)}}
 <section class="b"><div class="narrow placeholder">This page is empty. Add a section from the editor on the left.</div></section>
 {{- end}}
+{{- with .SectionCSS}}
+<style>{{.}}</style>
+{{- end}}
 </main>
 <footer class="site-footer{{with .Footer.Class}} {{.}}{{end}}">
   <div class="wrap footer-inner">
@@ -110,6 +113,7 @@
 {{- else if eq .Type "video"}}{{template "b-video" .}}
 {{- else if eq .Type "subpages"}}{{template "b-subpages" .}}
 {{- else if eq .Type "divider"}}{{template "b-divider" .}}
+{{- else if eq .Type "html"}}{{template "b-html" .}}
 {{- end}}
 {{- end}}
 
@@ -251,6 +255,22 @@
 <section class="b b-divider{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap"><hr></div></section>
 {{end}}
 
+{{define "b-html"}}
+{{- if .D.code}}
+<section class="b b-html{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
+  <div class="wrap">
+  {{- if .Preview}}
+    <iframe class="embed-preview" sandbox="allow-scripts allow-popups allow-forms" srcdoc="{{.D.srcdoc}}" title="Custom HTML preview"></iframe>
+  {{- else}}
+    {{.D.html}}
+  {{- end}}
+  </div>
+</section>
+{{- else if .Preview}}
+<section class="b b-html{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap placeholder">Paste HTML or embed code in the editor</div></section>
+{{- end}}
+{{end}}
+
 {{define "preview-script"}}
 (function () {
   // Talks to the editor: clicking a section selects it there, and the editor
@@ -268,6 +288,14 @@
     if (b && !a) { mark(b); parent.postMessage({ type: "select-block", id: b.getAttribute("data-block") }, "*"); }
   });
   window.addEventListener("message", function (e) {
+    // Custom HTML previews report their height so their frame can fit them.
+    if (e.data && e.data.type === "embed-size") {
+      if (!(e.data.h > 0)) return; // not laid out yet
+      document.querySelectorAll("iframe.embed-preview").forEach(function (f) {
+        if (f.contentWindow === e.source) f.style.height = Math.min(4000, e.data.h) + "px";
+      });
+      return;
+    }
     if (!e.data || e.data.type !== "show-block") return;
     var el = document.querySelector('[data-block="' + e.data.id + '"]');
     if (!el) return;
