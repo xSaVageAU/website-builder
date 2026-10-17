@@ -241,13 +241,22 @@ func (s *Store) CreatePage(parentID int64, title string, blocks json.RawMessage)
 		parentID).Scan(&pos); err != nil {
 		return nil, err
 	}
-	ts := now()
-	res, err := tx.Exec(`INSERT INTO pages (parent_id, position, title, slug, blocks, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, nullID(parentID), pos, title, slug, string(blocks), ts, ts)
-	if err != nil {
+	// Never reuse the id of a deleted page: versions and "page:<id>" links
+	// would mistake the new page for the old one.
+	var id int64
+	if err := tx.QueryRow(`SELECT MAX(COALESCE((SELECT MAX(id) FROM pages), 0),
+		COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'last_page_id'), 0)) + 1`).Scan(&id); err != nil {
 		return nil, err
 	}
-	id, _ := res.LastInsertId()
+	if _, err := tx.Exec(`INSERT INTO settings (key, value) VALUES ('last_page_id', ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, fmt.Sprint(id)); err != nil {
+		return nil, err
+	}
+	ts := now()
+	if _, err := tx.Exec(`INSERT INTO pages (id, parent_id, position, title, slug, blocks, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, nullID(parentID), pos, title, slug, string(blocks), ts, ts); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -319,11 +328,6 @@ func (s *Store) UpdatePage(id int64, u PageUpdate) (*Page, error) {
 		p.Title, p.Slug, boolInt(p.ShowInMenu), boolInt(p.Published), p.Description, string(p.Blocks), now(), p.ID)
 	if err != nil {
 		return nil, err
-	}
-	if u.Title != nil || u.Blocks != nil {
-		if err := snapshot(tx, p, false); err != nil {
-			return nil, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err

@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"sitesmith/internal/blocks"
 	"sitesmith/internal/build"
@@ -32,6 +33,7 @@ type Server struct {
 	r       *render.Renderer
 	admin   fs.FS
 	buildMu sync.Mutex
+	autoMu  sync.Mutex // one auto-version check at a time
 }
 
 func New(ws *Workspace, r *render.Renderer, admin fs.FS) *Server {
@@ -54,6 +56,19 @@ func (s *Server) onSite(h http.HandlerFunc) http.HandlerFunc {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	site := func(pattern string, h http.HandlerFunc) { mux.HandleFunc(pattern, s.onSite(h)) }
+	// edit is for requests that change content: the site is snapshotted first
+	// when the last version is getting old, so any change can be undone.
+	edit := func(pattern string, h http.HandlerFunc) {
+		site(pattern, func(w http.ResponseWriter, r *http.Request) {
+			s.autoMu.Lock()
+			err := s.c().st.AutoVersion(autoVersionEvery)
+			s.autoMu.Unlock()
+			if err != nil {
+				log.Printf("auto version: %v", err)
+			}
+			h(w, r)
+		})
+	}
 
 	mux.Handle("GET /{$}", http.HandlerFunc(s.adminIndex))
 	mux.Handle("GET /ui/", http.StripPrefix("/ui/", http.FileServerFS(s.admin)))
@@ -65,22 +80,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/sites/{id}", s.trashSite)
 
 	site("GET /api/site", s.getSite)
-	site("PUT /api/site", s.putSite)
+	edit("PUT /api/site", s.putSite)
 	site("POST /api/setup", s.setup)
 
 	site("GET /api/pages", s.listPages)
-	site("POST /api/pages", s.createPage)
+	edit("POST /api/pages", s.createPage)
 	site("GET /api/pages/{id}", s.getPage)
-	site("PUT /api/pages/{id}", s.updatePage)
-	site("DELETE /api/pages/{id}", s.deletePage)
-	site("POST /api/pages/{id}/move", s.movePage)
-	site("POST /api/pages/{id}/duplicate", s.duplicatePage)
-	site("GET /api/pages/{id}/revisions", s.revisions)
-	site("POST /api/pages/{id}/revisions/{rev}/restore", s.restoreRevision)
+	edit("PUT /api/pages/{id}", s.updatePage)
+	edit("DELETE /api/pages/{id}", s.deletePage)
+	edit("POST /api/pages/{id}/move", s.movePage)
+	edit("POST /api/pages/{id}/duplicate", s.duplicatePage)
+	site("POST /api/pages/{id}/discard", s.discardPage)
+
+	site("GET /api/versions", s.versions)
+	site("POST /api/versions", s.saveVersion)
+	site("POST /api/versions/{id}/restore", s.restoreVersion)
+	site("POST /api/discard", s.discardChanges)
 
 	site("GET /api/media", s.listMedia)
 	site("POST /api/media", s.uploadMedia)
-	site("DELETE /api/media/{id}", s.deleteMedia)
+	edit("DELETE /api/media/{id}", s.deleteMedia)
 
 	site("POST /api/publish", s.publish)
 	site("GET /api/export", s.export)
@@ -285,8 +304,9 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 
 type pageItem struct {
 	*store.Page
-	Live   bool `json:"live"`
-	IsHome bool `json:"isHome"`
+	Live   bool   `json:"live"`
+	IsHome bool   `json:"isHome"`
+	Change string `json:"change,omitempty"` // "changed" | "new" since the last publish
 }
 
 func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
@@ -295,13 +315,18 @@ func (s *Server) listPages(w http.ResponseWriter, r *http.Request) {
 		s.failErr(w, err)
 		return
 	}
+	changes, err := s.c().st.Changes()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
 	out := make([]pageItem, 0, len(t.Pages))
 	for _, p := range t.Pages {
 		cp := *p
 		cp.Blocks = nil
-		out = append(out, pageItem{Page: &cp, Live: t.IsLive(p.ID), IsHome: p.ID == t.HomeID})
+		out = append(out, pageItem{Page: &cp, Live: t.IsLive(p.ID), IsHome: p.ID == t.HomeID, Change: changes.Pages[p.ID]})
 	}
-	writeJSON(w, 200, map[string]any{"pages": out, "homeId": t.HomeID})
+	writeJSON(w, 200, map[string]any{"pages": out, "homeId": t.HomeID, "changes": changes})
 }
 
 func (s *Server) getPage(w http.ResponseWriter, r *http.Request) {
@@ -415,22 +440,95 @@ func (s *Server) duplicatePage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, p)
 }
 
-func (s *Server) revisions(w http.ResponseWriter, r *http.Request) {
-	list, err := s.c().st.Revisions(pathID(r, "id"))
+func (s *Server) discardPage(w http.ResponseWriter, r *http.Request) {
+	p, err := s.c().st.RevertPage(pathID(r, "id"), saveFirst(r))
 	if err != nil {
-		s.failErr(w, err)
-		return
-	}
-	writeJSON(w, 200, list)
-}
-
-func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
-	p, err := s.c().st.RestoreRevision(pathID(r, "id"), pathID(r, "rev"))
-	if err != nil {
-		s.failErr(w, err)
+		if errors.Is(err, store.ErrNotFound) {
+			s.failErr(w, err)
+			return
+		}
+		fail(w, 400, err.Error())
 		return
 	}
 	writeJSON(w, 200, p)
+}
+
+// ---------- versions ----------
+
+// Snapshot often enough that any moment is within a few minutes of a version.
+const autoVersionEvery = 5 * time.Minute
+
+func (s *Server) versions(w http.ResponseWriter, r *http.Request) {
+	list, err := s.c().st.Versions()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	changes, err := s.c().st.Changes()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	cur, err := s.c().st.CurrentVersion()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	// current is the version identical to the site right now (0 = unsaved
+	// changes), so the editor only asks "save first?" when it matters.
+	writeJSON(w, 200, map[string]any{"versions": list, "changes": changes, "current": cur})
+}
+
+// saveFirst reads {"save": bool} from a go-back request. It defaults to true:
+// keeping the current state is the safe choice if the editor didn't say.
+func saveFirst(r *http.Request) bool {
+	var req struct {
+		Save *bool `json:"save"`
+	}
+	if readJSON(r, &req) != nil || req.Save == nil {
+		return true
+	}
+	return *req.Save
+}
+
+func (s *Server) saveVersion(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Label string `json:"label"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		fail(w, 400, "Invalid request.")
+		return
+	}
+	label := strings.TrimSpace(req.Label)
+	if len(label) > 100 {
+		label = label[:100]
+	}
+	id, err := s.c().st.SaveVersion("saved", label)
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 201, map[string]int64{"id": id})
+}
+
+func (s *Server) restoreVersion(w http.ResponseWriter, r *http.Request) {
+	if err := s.c().st.RestoreVersion(pathID(r, "id"), saveFirst(r)); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) discardChanges(w http.ResponseWriter, r *http.Request) {
+	if err := s.c().st.DiscardChanges(saveFirst(r)); err != nil {
+		if errors.Is(err, store.ErrNeverPublished) {
+			fail(w, 400, "There's nothing to go back to yet: the site hasn't been published.")
+			return
+		}
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
 // ---------- media ----------
@@ -486,8 +584,7 @@ func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	m, err := s.c().st.Media(id)
-	if err != nil {
+	if _, err := s.c().st.Media(id); err != nil {
 		s.failErr(w, err)
 		return
 	}
@@ -502,11 +599,11 @@ func (s *Server) deleteMedia(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Files stay on disk: an older version may still use this image.
 	if err := s.c().st.DeleteMedia(id); err != nil {
 		s.failErr(w, err)
 		return
 	}
-	media.Remove(s.c().mediaDir, m)
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
@@ -561,7 +658,7 @@ func usesImage(fields []blocks.Field, data map[string]any, id int64) bool {
 func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	s.buildMu.Lock()
 	defer s.buildMu.Unlock()
-	rep, err := s.c().builder.Build()
+	rep, err := s.build()
 	if err != nil {
 		s.failErr(w, err)
 		return
@@ -569,10 +666,20 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, rep)
 }
 
+// build writes the site out and records that content as the live version,
+// which is what "unpublished changes" and "Discard changes" compare against.
+func (s *Server) build() (*build.Report, error) {
+	rep, err := s.c().builder.Build()
+	if err != nil {
+		return nil, err
+	}
+	return rep, s.c().st.MarkPublished()
+}
+
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	s.buildMu.Lock()
 	defer s.buildMu.Unlock()
-	if _, err := s.c().builder.Build(); err != nil {
+	if _, err := s.build(); err != nil {
 		s.failErr(w, err)
 		return
 	}

@@ -54,7 +54,10 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 - **The theme is design tokens.** Five font styles, three corner styles, two spacing options, light/dark, and any colour. Link colours are automatically darkened or lightened until they're readable, so every combination works.
 - **Starter content is coaching.** The onboarding wizard creates real pages whose placeholder text explains what to write.
 - **Image processing on upload:** photos are rotated upright (EXIF orientation), resized to 480/960/1600/2400 widths, re-encoded (which strips GPS metadata), and served with `srcset`.
-- **Autosave plus history.** Edits save about 0.6s after you stop typing. Each page keeps a snapshot roughly every 10 minutes of editing (50 kept), and restoring is non-destructive.
+- **Autosave, but nothing counts until you publish.** Edits save about 0.6s after you stop typing, so nothing is ever lost. The live site only changes when you click Publish. The editor marks each page with unpublished changes, and the Publish button shows how many there are.
+- **Versions are whole-site snapshots** of pages, menu, design and settings, so they can undo anything. One is taken automatically before a change whenever the last one is over 5 minutes old, which means any moment of editing is at most 5 minutes from a version. Versions are also taken on every publish, before every restore, and whenever you click "Save version". Automatic ones are thinned over time: all from the last day are kept, then one per day for a month, then one per week. Saved and published versions are kept forever.
+- **Going back never loses work by surprise.** "Discard unpublished changes", "Undo changes to this page" and "Go back to this" check whether what you have now is already in a version. If it is, you get a simple confirm. If not, Sitesmith asks: *Save and go back*, *Go back without saving*, or *Cancel*. The Versions list marks where you are ("You're here"), whether that's one of the versions or unsaved work.
+- **Deleting an image only hides it**, so going back to an older version brings it back. Its files stay on disk.
 
 ## What's in the MVP
 
@@ -88,8 +91,10 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 
 **Editor UX:**
 - Editing happens in forms beside the preview, not by typing directly on the page. Direct on-page editing would feel more like "what you see is what you get", but it's much more complex.
-- No global undo. There's undo for deleted sections, plus page history.
-- No "unpublished changes" indicator yet.
+- There's no step-by-step undo (Ctrl+Z across sections). Versions and the undo after deleting a section cover the big mistakes.
+- Deleted images are never removed from disk. A "clean up unused files" action should delete files that no version uses any more.
+- There are no branches (parallel lines of work you can switch between). "You're here" covers knowing where you are; branching is worth it only if people need to keep two alternatives going at once.
+- There's no experiment mode yet: you can't try something in a separate copy and then keep it or throw it away. Versions plus Discard cover most of this, so it's worth adding only if it turns out to be missed.
 - The editor UI is desktop-only. It hides the preview below 1100px.
 
 **Theme extensibility.** There's one built-in theme. Should more themes be token presets (which keeps everything compatible), or full template sets (more variety, but harder to keep every section type looking right)?

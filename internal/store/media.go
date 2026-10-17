@@ -63,7 +63,7 @@ func scanMedia(r scanner) (*Media, error) {
 }
 
 func (s *Store) ListMedia() ([]*Media, error) {
-	rows, err := s.db.Query(`SELECT ` + mediaCols + ` FROM media ORDER BY id DESC`)
+	rows, err := s.db.Query(`SELECT ` + mediaCols + ` FROM media WHERE deleted = 0 ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -80,14 +80,16 @@ func (s *Store) ListMedia() ([]*Media, error) {
 }
 
 func (s *Store) Media(id int64) (*Media, error) {
-	m, err := scanMedia(s.db.QueryRow(`SELECT `+mediaCols+` FROM media WHERE id = ?`, id))
+	m, err := scanMedia(s.db.QueryRow(`SELECT `+mediaCols+` FROM media WHERE id = ? AND deleted = 0`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	return m, err
 }
 
+// DeleteMedia hides an image. Its files stay on disk because older versions
+// of the site may still use it; restoring one of those brings it back.
 func (s *Store) DeleteMedia(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM media WHERE id = ?`, id)
+	_, err := s.db.Exec(`UPDATE media SET deleted = 1 WHERE id = ?`, id)
 	return err
 }

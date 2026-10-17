@@ -55,6 +55,7 @@ export function renderTree(root, pages, { currentId, onSelect, onMove, onAdd, on
       icon('grip', 'grip'),
       icon(p.isHome ? 'home' : 'page', 'page-icon'),
       h('span', { class: 'tree-title' }, p.title),
+      p.change ? h('span', { class: 'change-dot', title: p.change === 'new' ? 'New, not published yet' : 'Unpublished changes' }) : null,
       !p.published ? h('span', { class: 'badge' }, 'Draft') : !p.live ? h('span', { class: 'badge' }, 'Hidden') : null,
       p.published && !p.showInMenu ? h('span', { class: 'menu-off', title: 'Not shown in the menu' }, icon('eyeOff')) : null,
       h('span', { class: 'tree-actions' },

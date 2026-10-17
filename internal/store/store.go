@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -14,6 +15,10 @@ var ErrNotFound = errors.New("not found")
 
 type Store struct {
 	db *sql.DB
+
+	mu    sync.Mutex
+	pub   *snapshot // decoded copy of the live version, see publishedSnapshot
+	pubID int64
 }
 
 const schema = `
@@ -37,14 +42,18 @@ CREATE TABLE IF NOT EXISTS pages (
 );
 CREATE INDEX IF NOT EXISTS pages_parent ON pages(parent_id, position);
 
-CREATE TABLE IF NOT EXISTS revisions (
+-- Per-page history, replaced by whole-site versions.
+DROP TABLE IF EXISTS revisions;
+
+-- Whole-site snapshots: settings, every page and which images existed.
+CREATE TABLE IF NOT EXISTS versions (
 	id         INTEGER PRIMARY KEY,
-	page_id    INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-	title      TEXT    NOT NULL,
-	blocks     TEXT    NOT NULL,
-	created_at TEXT    NOT NULL
+	kind       TEXT    NOT NULL, -- auto | saved | published | restore
+	label      TEXT    NOT NULL DEFAULT '',
+	created_at TEXT    NOT NULL,
+	hash       TEXT    NOT NULL, -- of the content, to skip identical snapshots
+	data       BLOB    NOT NULL  -- gzipped JSON
 );
-CREATE INDEX IF NOT EXISTS revisions_page ON revisions(page_id, id);
 
 -- Paths that were live in the last published build. Used to work out which
 -- URLs moved, so only URLs the public actually saw get redirects.
@@ -83,7 +92,25 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	// Deleted images are only hidden, so restoring an older version can bring them back.
+	if err := s.addColumn("media", "deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	return s, nil
+}
+
+func (s *Store) addColumn(table, col, def string) error {
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, col).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err := s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, col, def))
+	return err
 }
 
 func (s *Store) Close() error { return s.db.Close() }

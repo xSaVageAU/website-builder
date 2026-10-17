@@ -1,7 +1,8 @@
 // The page editor: page settings at the top, then the list of sections.
 import { api } from './api.js';
-import { h, icon, iconButton, modal, confirmDialog, toast, slugify, uid, clone } from './ui.js';
+import { h, icon, iconButton, modal, toast, slugify, uid, clone } from './ui.js';
 import { renderFields, defaultsFor, toggle } from './fields.js';
+import { askGoBack } from './versions.js';
 
 export function mountPageEditor(root, page, app) {
   const schema = app.schema;
@@ -48,8 +49,26 @@ export function mountPageEditor(root, page, app) {
     toggle(page.published, (v) => { page.published = v; save(); app.refreshTree(); }, 'Published'),
     toggle(page.showInMenu, (v) => { page.showInMenu = v; save(); }, 'Show in menu'),
     h('span', { class: 'spacer' }),
-    h('button', { type: 'button', class: 'btn small ghost', onClick: () => showHistory() }, icon('history'), 'History'),
     iconButton('more', 'More page options', (e) => app.pageMenu(page, e.currentTarget)));
+
+  // "Unpublished changes · Undo" for this page, kept current by setChange.
+  const changeEl = h('div', { class: 'page-change', hidden: true });
+  const undoPage = async () => {
+    await app.saver.flush();
+    const choice = await askGoBack({
+      title: 'Undo changes to this page?',
+      message: 'This page goes back to how it was when you last published. Everything else stays as it is.',
+      okLabel: 'Undo changes',
+      danger: true,
+    });
+    if (!choice) return;
+    try {
+      await api.discardPage(page.id, choice.save);
+      toast('Page changes undone');
+      await app.refreshTree();
+      app.openPage(page.id, { reload: true });
+    } catch (e) { toast(e.message, 'error'); }
+  };
 
   const desc = h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'One or two sentences about this page.',
     onInput: (e) => { page.description = e.target.value; save(); } });
@@ -143,28 +162,9 @@ export function mountPageEditor(root, page, app) {
     });
   };
 
-  const showHistory = async () => {
-    await app.saver.flush();
-    const revs = await api.revisions(page.id);
-    const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-    const dlg = modal({
-      title: 'Page history',
-      body: h('div', {},
-        h('p', { class: 'muted' }, 'Sitesmith keeps a snapshot of this page every few minutes while you edit. Restoring is safe: your current version stays in the history too.'),
-        h('ul', { class: 'history' }, revs.map((r, i) => h('li', {},
-          h('span', {}, fmt.format(new Date(r.createdAt)), i === 0 ? h('em', { class: 'muted' }, ' — current') : null),
-          i === 0 ? null : h('button', { type: 'button', class: 'btn small', onClick: async () => {
-            const p = await api.restoreRevision(page.id, r.id);
-            dlg.close();
-            toast('Earlier version restored');
-            app.openPage(p.id, { reload: true });
-          } }, 'Restore'))))),
-    });
-  };
-
   renderBlocks();
   root.replaceChildren(h('div', { class: 'page-editor' },
-    h('div', { class: 'page-header' }, titleInput, pathEl, flags, seo),
+    h('div', { class: 'page-header' }, titleInput, pathEl, changeEl, flags, seo),
     list));
 
   return {
@@ -183,6 +183,14 @@ export function mountPageEditor(root, page, app) {
       renderPath();
     },
     setHome(isHome) { page.isHome = isHome; renderPath(); },
+    // change: "changed" | "new" | undefined, compared with the published site.
+    setChange(change, everPublished) {
+      changeEl.hidden = !everPublished || !change;
+      if (changeEl.hidden) return;
+      changeEl.replaceChildren(h('span', { class: 'change-dot' }),
+        change === 'new' ? 'New page, not published yet' : 'Unpublished changes',
+        change === 'changed' ? h('button', { type: 'button', class: 'link-btn', onClick: undoPage }, 'Undo changes to this page') : null);
+    },
   };
 }
 

@@ -43,8 +43,12 @@ export const api = {
   deletePage: (id) => req('DELETE', `/api/pages/${id}`),
   movePage: (id, parentId, index) => req('POST', `/api/pages/${id}/move`, { parentId, index }),
   duplicatePage: (id) => req('POST', `/api/pages/${id}/duplicate`),
-  revisions: (id) => req('GET', `/api/pages/${id}/revisions`),
-  restoreRevision: (id, rev) => req('POST', `/api/pages/${id}/revisions/${rev}/restore`),
+  discardPage: (id, save) => req('POST', `/api/pages/${id}/discard`, { save }),
+
+  versions: () => req('GET', '/api/versions'),
+  saveVersion: (label) => req('POST', '/api/versions', { label }),
+  restoreVersion: (id, save) => req('POST', `/api/versions/${id}/restore`, { save }),
+  discardChanges: (save) => req('POST', '/api/discard', { save }),
 
   media: () => req('GET', '/api/media'),
   upload: (files) => {

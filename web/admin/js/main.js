@@ -7,6 +7,7 @@ import { mountDesign, mountSettings } from './design.js';
 import { mountMediaLibrary, loadMedia } from './media.js';
 import { runWizard } from './wizard.js';
 import { showSites, hasOtherSites, cancelNewSite } from './sites.js';
+import { showVersions, changesText } from './versions.js';
 
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -239,6 +240,19 @@ function renderDevice(d) {
     h('button', { type: 'button', class: d === 'mobile' ? 'on' : '', title: 'Phone preview', onClick: () => { renderDevice('mobile'); app.preview.setDevice('mobile'); } }, icon('phone')));
 }
 
+const changeCount = h('span', { class: 'count', hidden: true });
+const publishBtn = h('button', { type: 'button', class: 'btn primary', onClick: () => publish() }, icon('publish'), 'Publish', changeCount);
+
+// Shows how far the editor has drifted from the published site.
+function renderChanges() {
+  const c = app.changes;
+  const n = c?.everPublished ? c.count : 0;
+  changeCount.hidden = !n;
+  changeCount.textContent = n;
+  publishBtn.title = changesText(c);
+  app.editor?.setChange(app.pages.find((p) => p.id === app.editor.page.id)?.change, c?.everPublished);
+}
+
 function layout() {
   renderDevice('desktop');
   document.getElementById('app').replaceChildren(
@@ -248,7 +262,8 @@ function layout() {
       h('span', { class: 'spacer' }),
       status,
       deviceSeg,
-      h('button', { type: 'button', class: 'btn primary', onClick: publish }, icon('publish'), 'Publish')),
+      h('button', { type: 'button', class: 'btn ghost', onClick: () => showVersions(app) }, icon('history'), 'Versions'),
+      publishBtn),
     h('aside', { class: 'sidebar' },
       h('div', { class: 'side-head' },
         h('span', {}, 'Pages'),
@@ -264,7 +279,9 @@ function layout() {
 app.refreshTree = async () => {
   const res = await api.pages();
   app.pages = res.pages;
+  app.changes = res.changes;
   app.renderTree();
+  renderChanges();
 };
 
 app.renderTree = () => {
@@ -278,7 +295,9 @@ app.renderTree = () => {
       try {
         const res = await api.movePage(id, parentId, index);
         app.pages = res.pages;
+        app.changes = res.changes;
         app.renderTree();
+        renderChanges();
         const p = app.pages.find((x) => x.id === app.currentId);
         if (p && app.editor) {
           app.editor.applySaved(p);
@@ -302,6 +321,7 @@ app.openPage = async (id, { reload = false, fromPreview = false } = {}) => {
   store.set('sitesmith.page', String(id));
   renderSideNav();
   app.editor = mountPageEditor(main, page, app);
+  renderChanges();
   app.renderTree();
   if (!fromPreview) app.preview.show(page.path);
   main.scrollTop = 0;
@@ -377,6 +397,7 @@ async function publish() {
   let rep;
   try {
     rep = await api.publish();
+    app.refreshTree(); // clears the unpublished-change markers
   } catch (e) {
     body.replaceChildren(h('p', { class: 'error-text' }, e.message));
     return;
