@@ -114,7 +114,8 @@ type BlockView struct {
 	Type    string
 	D       map[string]any
 	Preview bool
-	First   bool // first block on a page without an automatic title: its heading becomes the h1
+	First   bool   // first block on a page without an automatic title: its heading becomes the h1
+	Class   string // from the section's Style choices, e.g. "pt-l bg-brand"
 }
 
 type PageView struct {
@@ -131,6 +132,7 @@ type PageView struct {
 	Nav         []NavItem
 	Crumbs      []Crumb
 	ShowTitle   bool
+	TitleHidden bool // page title switched off: only a hidden <h1> for search engines and screen readers
 	Blocks      []BlockView
 	FooterText  string
 	Year        int
@@ -306,7 +308,19 @@ func (c *pageCtx) blockView(b blocks.Block, page *store.Page) BlockView {
 			d["items"] = []map[string]any{}
 		}
 	}
-	return BlockView{ID: b.ID, Type: b.Type, D: d, Preview: c.mode == Preview}
+	return BlockView{ID: b.ID, Type: b.Type, D: d, Preview: c.mode == Preview, Class: styleClass(b.Style)}
+}
+
+// styleClass turns style choices into the classes site.css understands.
+func styleClass(style map[string]any) string {
+	prefix := map[string]string{"spaceTop": "pt-", "spaceBottom": "pb-", "height": "h-", "background": "bg-", "width": "w-"}
+	var out []string
+	for _, f := range blocks.StyleFields { // fixed order keeps the HTML stable
+		if v, _ := style[f.Key].(string); v != "" {
+			out = append(out, prefix[f.Key]+v)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 var (
@@ -405,10 +419,14 @@ func (r *Renderer) RenderPage(w io.Writer, s *Site, page *store.Page, mode Mode,
 	}
 
 	list := blocks.Parse(page.Blocks)
-	v.ShowTitle = len(list) == 0 || list[0].Type != "hero"
+	// A hero at the top supplies the h1 itself; otherwise the page title does,
+	// visibly unless the page has its title switched off.
+	heroFirst := len(list) > 0 && list[0].Type == "hero"
+	v.ShowTitle = !heroFirst && !page.HideTitle
+	v.TitleHidden = !heroFirst && page.HideTitle
 	for i, b := range list {
 		bv := c.blockView(b, page)
-		bv.First = i == 0 && !v.ShowTitle
+		bv.First = i == 0 && heroFirst
 		v.Blocks = append(v.Blocks, bv)
 		if v.OGImage == "" && s.Info.BaseURL != "" {
 			if img, ok := bv.D["image"].(*Image); ok && img != nil {
@@ -530,6 +548,17 @@ func (r *Renderer) CSS(t store.Theme) string {
 	}
 	fmt.Fprintf(&b, "  --primary: %s;\n  --on-primary: %s;\n  --primary-soft: %s;\n  --link: %s;\n",
 		t.Primary, onColor(t.Primary), soft, link)
+
+	// "Contrast" section background: a dark band on a light site, a light
+	// band on a dark one. Sections swap the palette variables for these.
+	cbg, ctext, cmuted, csurface, cborder := "#16181d", "#f1f3f5", "#a9afba", "#22262e", "#343a45"
+	clink := lightenTo(t.Primary, 4.5, cbg)
+	if t.Mode == "dark" {
+		cbg, ctext, cmuted, csurface, cborder = "#f4f5f7", "#16181d", "#5a6170", "#ffffff", "#dfe3e8"
+		clink = darkenTo(t.Primary, 4.5, cbg)
+	}
+	fmt.Fprintf(&b, "  --page-bg: %s;\n  --contrast-bg: %s;\n  --contrast-text: %s;\n  --contrast-muted: %s;\n  --contrast-surface: %s;\n  --contrast-border: %s;\n  --contrast-link: %s;\n",
+		palette["--bg"], cbg, ctext, cmuted, csurface, cborder, clink)
 	fmt.Fprintf(&b, "  --font-head: %s;\n  --font-body: %s;\n", fonts[0], fonts[1])
 	fmt.Fprintf(&b, "  --radius: %s;\n  --radius-sm: %s;\n  --radius-btn: %s;\n  --space: %s;\n", radius[0], radius[1], radius[2], space)
 	if t.Mode == "dark" {

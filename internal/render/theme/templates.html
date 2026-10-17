@@ -53,6 +53,8 @@
 {{- end}}
 {{- if .ShowTitle}}
 <header class="page-head narrow"><h1>{{.Title}}</h1></header>
+{{- else if .TitleHidden}}
+<h1 class="sr-only">{{.Title}}</h1>
 {{- end}}
 {{- range .Blocks}}
 {{template "block" .}}
@@ -93,7 +95,7 @@
 {{define "attrs"}}{{if .Preview}} data-block="{{.ID}}"{{end}}{{end}}
 
 {{define "b-hero"}}
-<section class="b b-hero align-{{.D.align}}{{if .D.image}} has-image{{end}}"{{template "attrs" .}}>
+<section class="b b-hero{{with .Class}} {{.}}{{end}} align-{{.D.align}}{{if .D.image}} has-image{{end}}"{{template "attrs" .}}>
   {{- with .D.image}}
   <img class="hero-bg" src="{{.Src}}" srcset="{{.Srcset}}" sizes="100vw" alt="" width="{{.Width}}" height="{{.Height}}">
   {{- end}}
@@ -108,23 +110,23 @@
 {{end}}
 
 {{define "b-heading"}}
-<section class="b b-heading"{{template "attrs" .}}>
+<section class="b b-heading{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="narrow align-{{.D.align}}">{{if eq .D.level "3"}}<h3>{{.D.text}}</h3>{{else}}<h2>{{.D.text}}</h2>{{end}}</div>
 </section>
 {{end}}
 
 {{define "b-text"}}
 {{- if .D.html}}
-<section class="b b-text"{{template "attrs" .}}>
+<section class="b b-text{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="narrow prose">{{.D.html}}</div>
 </section>
 {{- else if .Preview}}
-<section class="b b-text"{{template "attrs" .}}><div class="narrow placeholder">Empty text section</div></section>
+<section class="b b-text{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="narrow placeholder">Empty text section</div></section>
 {{- end}}
 {{end}}
 
 {{define "b-image"}}
-<section class="b b-image width-{{.D.width}}"{{template "attrs" .}}>
+<section class="b b-image{{with .Class}} {{.}}{{end}} width-{{.D.width}}"{{template "attrs" .}}>
   <figure class="{{if eq .D.width "normal"}}narrow{{else if eq .D.width "wide"}}wrap{{end}}">
   {{- with .D.image}}
     <img src="{{.Src}}" srcset="{{.Srcset}}" sizes="{{if eq $.D.width "full"}}100vw{{else if eq $.D.width "wide"}}(min-width: 76rem) 72rem, 100vw{{else}}(min-width: 48rem) 44rem, 100vw{{end}}" alt="{{$.D.alt}}" width="{{.Width}}" height="{{.Height}}" loading="lazy" decoding="async">
@@ -137,7 +139,7 @@
 {{end}}
 
 {{define "b-columns"}}
-<section class="b b-columns"{{template "attrs" .}}>
+<section class="b b-columns{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="wrap cols cols-{{len .D.items}}">
     {{- range .D.items}}
     <div class="col">
@@ -156,13 +158,13 @@
 {{end}}
 
 {{define "b-button"}}
-<section class="b b-button align-{{.D.align}}"{{template "attrs" .}}>
+<section class="b b-button{{with .Class}} {{.}}{{end}} align-{{.D.align}}"{{template "attrs" .}}>
   <div class="narrow"><a class="btn{{if eq .D.style "secondary"}} btn-secondary{{end}}" href="{{or .D.link "#"}}">{{.D.label}}</a></div>
 </section>
 {{end}}
 
 {{define "b-cta"}}
-<section class="b b-cta"{{template "attrs" .}}>
+<section class="b b-cta{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="wrap"><div class="cta-box">
     <h2>{{.D.heading}}</h2>
     {{- with .D.text}}
@@ -174,7 +176,7 @@
 {{end}}
 
 {{define "b-gallery"}}
-<section class="b b-gallery"{{template "attrs" .}}>
+<section class="b b-gallery{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="wrap">
   {{- if .D.items}}
     <div class="gallery gallery-{{.D.columns}}">
@@ -188,25 +190,25 @@
 {{end}}
 
 {{define "b-quote"}}
-<section class="b b-quote"{{template "attrs" .}}>
+<section class="b b-quote{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="narrow"><blockquote><p>{{.D.text}}</p>{{with .D.cite}}<cite>&mdash; {{.}}</cite>{{end}}</blockquote></div>
 </section>
 {{end}}
 
 {{define "b-video"}}
 {{- if .D.embed}}
-<section class="b b-video"{{template "attrs" .}}>
+<section class="b b-video{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <figure class="wrap"><div class="video"><iframe src="{{.D.embed}}" title="{{or .D.caption "Video"}}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
   {{- with .D.caption}}<figcaption>{{.}}</figcaption>{{end}}</figure>
 </section>
 {{- else if .Preview}}
-<section class="b b-video"{{template "attrs" .}}><div class="wrap placeholder">Paste a YouTube or Vimeo address in the editor</div></section>
+<section class="b b-video{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap placeholder">Paste a YouTube or Vimeo address in the editor</div></section>
 {{- end}}
 {{end}}
 
 {{define "b-subpages"}}
 {{- if .D.pages}}
-<section class="b b-subpages"{{template "attrs" .}}>
+<section class="b b-subpages{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
   <div class="wrap">
   {{- if eq .D.style "list"}}
     <ul class="subpages-list">{{range .D.pages}}<li><a href="{{.Href}}">{{.Title}}</a></li>{{end}}</ul>
@@ -220,12 +222,12 @@
   </div>
 </section>
 {{- else if .Preview}}
-<section class="b b-subpages"{{template "attrs" .}}><div class="wrap placeholder">No subpages yet. Drag pages underneath this one in the sidebar and they'll be listed here.</div></section>
+<section class="b b-subpages{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap placeholder">No subpages yet. Drag pages underneath this one in the sidebar and they'll be listed here.</div></section>
 {{- end}}
 {{end}}
 
 {{define "b-divider"}}
-<section class="b b-divider"{{template "attrs" .}}><div class="wrap"><hr></div></section>
+<section class="b b-divider{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap"><hr></div></section>
 {{end}}
 
 {{define "preview-script"}}

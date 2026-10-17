@@ -15,6 +15,7 @@ export function mountPageEditor(root, page, app) {
     title: page.title,
     slug: page.slug,
     showInMenu: page.showInMenu,
+    hideTitle: !!page.hideTitle,
     published: page.published,
     description: page.description,
     blocks,
@@ -48,6 +49,9 @@ export function mountPageEditor(root, page, app) {
   const flags = h('div', { class: 'page-flags' },
     toggle(page.published, (v) => { page.published = v; save(); app.refreshTree(); }, 'Published'),
     toggle(page.showInMenu, (v) => { page.showInMenu = v; save(); }, 'Show in menu'),
+    // A page starting with a hero never shows this title: the hero headline is its title.
+    h('span', { title: 'The page name shown above the first section. Pages that start with a Hero use its headline instead.' },
+      toggle(!page.hideTitle, (v) => { page.hideTitle = !v; save(); }, 'Show title')),
     h('span', { class: 'spacer' }),
     iconButton('more', 'More page options', (e) => app.pageMenu(page, e.currentTarget)));
 
@@ -120,8 +124,37 @@ export function mountPageEditor(root, page, app) {
       isCollapsed ? null : h('div', { class: 'block-body' },
         t.fields?.length ? renderFields(t.fields, b.data, ctx) : h('p', { class: 'muted' }, t.description),
         b.type === 'subpages' ? h('p', { class: 'field-help' },
-          "Each card shows a subpage's title and the Summary at the top of that page.") : null));
+          "Each card shows a subpage's title and the Summary at the top of that page.") : null,
+        styleDrawer(b, t)));
     return el;
+  };
+
+  // Fine-tuning for one section: spacing, height, background, width. Every
+  // control starts at "Auto", which is whatever the theme does.
+  const styleFields = Object.fromEntries((schema.styleFields || []).map((f) => [f.key, f]));
+  const styleOpen = new Set();
+  const styleDrawer = (b, t) => {
+    const fields = (t.style || []).map((k) => styleFields[k]).filter(Boolean);
+    if (!fields.length) return null;
+    b.style ||= {};
+    const label = h('span', { class: 'style-summary' });
+    const describe = () => {
+      const picked = fields.filter((f) => b.style[f.key]).map((f) => f.options.find((o) => o.value === b.style[f.key])?.label);
+      label.textContent = picked.length ? picked.join(', ') : 'Auto';
+      reset.hidden = !picked.length;
+    };
+    const onChange = () => {
+      for (const k of Object.keys(b.style)) if (!b.style[k]) delete b.style[k];
+      describe();
+      save();
+    };
+    const reset = h('button', { type: 'button', class: 'link-btn', onClick: () => { b.style = {}; renderBlocks(); save(); } }, 'Reset to auto');
+    const drawer = h('details', { class: 'style-drawer', open: styleOpen.has(b.id),
+      onToggle: () => { drawer.open ? styleOpen.add(b.id) : styleOpen.delete(b.id); } },
+      h('summary', {}, icon('palette'), 'Style', label),
+      h('div', { class: 'style-fields' }, renderFields(fields, b.style, { ...ctx, onChange }), reset));
+    describe();
+    return drawer;
   };
 
   const renderBlocks = () => {

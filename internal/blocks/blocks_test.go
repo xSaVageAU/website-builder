@@ -52,3 +52,28 @@ func TestNormalize(t *testing.T) {
 		t.Errorf("heading = %+v", h)
 	}
 }
+
+func TestNormalizeStyle(t *testing.T) {
+	in := `[
+		{"id":"h","type":"hero","data":{},"style":{"height":"tall","background":"brand","spaceTop":"xl","width":"bogus"}},
+		{"id":"t","type":"text","data":{},"style":{"spaceTop":"","spaceBottom":"l"}},
+		{"id":"d","type":"divider","data":{}}
+	]`
+	out, err := Normalize(json.RawMessage(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []Block
+	_ = json.Unmarshal(out, &got)
+	hero := got[0].Style
+	// spaceTop isn't offered on a hero, and "bogus" isn't a width.
+	if len(hero) != 2 || hero["height"] != "tall" || hero["background"] != "brand" {
+		t.Errorf("hero style = %v", hero)
+	}
+	if text := got[1].Style; len(text) != 1 || text["spaceBottom"] != "l" {
+		t.Errorf("text style = %v (auto values should be dropped)", text)
+	}
+	if got[2].Style != nil || strings.Contains(string(out), `"style":{}`) {
+		t.Errorf("unstyled block should have no style: %s", out)
+	}
+}

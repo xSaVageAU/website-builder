@@ -30,6 +30,7 @@ type snapPage struct {
 	Title       string          `json:"title"`
 	Slug        string          `json:"slug"`
 	ShowInMenu  bool            `json:"showInMenu"`
+	HideTitle   bool            `json:"hideTitle,omitempty"`
 	Published   bool            `json:"published"`
 	Description string          `json:"description"`
 	Blocks      json.RawMessage `json:"blocks"`
@@ -45,7 +46,11 @@ type snapshot struct {
 
 // contentHash ignores timestamps, so identical content always hashes the same.
 func (p snapPage) contentHash() string {
-	b, _ := json.Marshal([]any{p.ParentID, p.Position, p.Title, p.Slug, p.ShowInMenu, p.Published, p.Description, p.Blocks})
+	fields := []any{p.ParentID, p.Position, p.Title, p.Slug, p.ShowInMenu, p.Published, p.Description, p.Blocks}
+	if p.HideTitle { // only when set, so pages saved before this field existed hash the same
+		fields = append(fields, "hideTitle")
+	}
+	b, _ := json.Marshal(fields)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
@@ -77,7 +82,7 @@ func capture(q querier) (*snapshot, error) {
 	}
 	d.Site = json.RawMessage(site)
 
-	rows, err := q.Query(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu, published,
+	rows, err := q.Query(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu, hide_title, published,
 		description, blocks, created_at, updated_at FROM pages ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -85,13 +90,13 @@ func capture(q querier) (*snapshot, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var p snapPage
-		var menu, pub int
+		var menu, hide, pub int
 		var blocks string
-		if err := rows.Scan(&p.ID, &p.ParentID, &p.Position, &p.Title, &p.Slug, &menu, &pub,
+		if err := rows.Scan(&p.ID, &p.ParentID, &p.Position, &p.Title, &p.Slug, &menu, &hide, &pub,
 			&p.Description, &blocks, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
-		p.ShowInMenu, p.Published, p.Blocks = menu == 1, pub == 1, json.RawMessage(blocks)
+		p.ShowInMenu, p.HideTitle, p.Published, p.Blocks = menu == 1, hide == 1, pub == 1, json.RawMessage(blocks)
 		d.Pages = append(d.Pages, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -355,13 +360,13 @@ func (s *Store) apply(d *snapshot) error {
 		ids = append(ids, p.ID)
 		// Upsert rather than delete-and-reinsert: deleting would cascade away
 		// the publish history (old URLs) that redirects are built from.
-		if _, err := tx.Exec(`INSERT INTO pages (id, parent_id, position, title, slug, show_in_menu, published,
-			description, blocks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		if _, err := tx.Exec(`INSERT INTO pages (id, parent_id, position, title, slug, show_in_menu, hide_title, published,
+			description, blocks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, position = excluded.position,
-			title = excluded.title, slug = excluded.slug, show_in_menu = excluded.show_in_menu,
+			title = excluded.title, slug = excluded.slug, show_in_menu = excluded.show_in_menu, hide_title = excluded.hide_title,
 			published = excluded.published, description = excluded.description, blocks = excluded.blocks,
 			updated_at = excluded.updated_at`,
-			p.ID, nullID(p.ParentID), p.Position, p.Title, p.Slug, boolInt(p.ShowInMenu), boolInt(p.Published),
+			p.ID, nullID(p.ParentID), p.Position, p.Title, p.Slug, boolInt(p.ShowInMenu), boolInt(p.HideTitle), boolInt(p.Published),
 			p.Description, string(p.Blocks), p.CreatedAt, now()); err != nil {
 			return err
 		}
@@ -402,7 +407,7 @@ func (s *Store) RevertPage(pageID int64, save bool) (*Page, error) {
 			return nil, err
 		}
 		blocks := p.Blocks
-		return s.UpdatePage(pageID, PageUpdate{Title: &p.Title, Slug: &p.Slug, ShowInMenu: &p.ShowInMenu,
+		return s.UpdatePage(pageID, PageUpdate{Title: &p.Title, Slug: &p.Slug, ShowInMenu: &p.ShowInMenu, HideTitle: &p.HideTitle,
 			Published: &p.Published, Description: &p.Description, Blocks: &blocks})
 	}
 	return nil, errors.New("this page is new since the last publish, so there's nothing to go back to")

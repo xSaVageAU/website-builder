@@ -18,6 +18,7 @@ type Page struct {
 	Title       string          `json:"title"`
 	Slug        string          `json:"slug"`
 	ShowInMenu  bool            `json:"showInMenu"`
+	HideTitle   bool            `json:"hideTitle"` // no visible page title; it stays in the HTML for search engines
 	Published   bool            `json:"published"`
 	Description string          `json:"description"`
 	Blocks      json.RawMessage `json:"blocks,omitempty"`
@@ -110,7 +111,7 @@ func (s *Store) Tree() (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu,
+	rows, err := s.db.Query(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu, hide_title,
 		published, description, blocks, updated_at FROM pages ORDER BY position, id`)
 	if err != nil {
 		return nil, err
@@ -162,13 +163,14 @@ type scanner interface{ Scan(...any) error }
 
 func scanPage(r scanner) (*Page, error) {
 	var p Page
-	var menu, pub int
+	var menu, hide, pub int
 	var blocks, updated string
-	if err := r.Scan(&p.ID, &p.ParentID, &p.Position, &p.Title, &p.Slug, &menu, &pub,
+	if err := r.Scan(&p.ID, &p.ParentID, &p.Position, &p.Title, &p.Slug, &menu, &hide, &pub,
 		&p.Description, &blocks, &updated); err != nil {
 		return nil, err
 	}
 	p.ShowInMenu = menu == 1
+	p.HideTitle = hide == 1
 	p.Published = pub == 1
 	p.Blocks = json.RawMessage(blocks)
 	p.UpdatedAt = parseTime(updated)
@@ -280,6 +282,7 @@ type PageUpdate struct {
 	Title       *string          `json:"title"`
 	Slug        *string          `json:"slug"`
 	ShowInMenu  *bool            `json:"showInMenu"`
+	HideTitle   *bool            `json:"hideTitle"`
 	Published   *bool            `json:"published"`
 	Description *string          `json:"description"`
 	Blocks      *json.RawMessage `json:"blocks"`
@@ -292,7 +295,7 @@ func (s *Store) UpdatePage(id int64, u PageUpdate) (*Page, error) {
 	}
 	defer tx.Rollback()
 
-	p, err := scanPage(tx.QueryRow(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu,
+	p, err := scanPage(tx.QueryRow(`SELECT id, COALESCE(parent_id, 0), position, title, slug, show_in_menu, hide_title,
 		published, description, blocks, updated_at FROM pages WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -314,6 +317,9 @@ func (s *Store) UpdatePage(id int64, u PageUpdate) (*Page, error) {
 	if u.ShowInMenu != nil {
 		p.ShowInMenu = *u.ShowInMenu
 	}
+	if u.HideTitle != nil {
+		p.HideTitle = *u.HideTitle
+	}
 	if u.Published != nil {
 		p.Published = *u.Published
 	}
@@ -323,9 +329,9 @@ func (s *Store) UpdatePage(id int64, u PageUpdate) (*Page, error) {
 	if u.Blocks != nil {
 		p.Blocks = *u.Blocks
 	}
-	_, err = tx.Exec(`UPDATE pages SET title = ?, slug = ?, show_in_menu = ?, published = ?, description = ?,
+	_, err = tx.Exec(`UPDATE pages SET title = ?, slug = ?, show_in_menu = ?, hide_title = ?, published = ?, description = ?,
 		blocks = ?, updated_at = ? WHERE id = ?`,
-		p.Title, p.Slug, boolInt(p.ShowInMenu), boolInt(p.Published), p.Description, string(p.Blocks), now(), p.ID)
+		p.Title, p.Slug, boolInt(p.ShowInMenu), boolInt(p.HideTitle), boolInt(p.Published), p.Description, string(p.Blocks), now(), p.ID)
 	if err != nil {
 		return nil, err
 	}

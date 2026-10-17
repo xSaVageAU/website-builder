@@ -3,6 +3,7 @@ package build
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,5 +184,56 @@ func TestZipWithServer(t *testing.T) {
 	}
 	if _, ok := modes["index.html"]; ok {
 		t.Error("site files also at the top level")
+	}
+}
+
+func TestSectionStyleClasses(t *testing.T) {
+	st, b := setup(t, "blank")
+	tree, _ := st.Tree()
+	home := tree.Pages[0]
+	blocks := json.RawMessage(`[{"id":"h","type":"hero","data":{"heading":"Hi"},"style":{"height":"short","background":"brand"}},
+		{"id":"t","type":"text","data":{"html":"<p>x</p>"},"style":{"spaceTop":"xl","width":"narrow"}}]`)
+	if _, err := st.UpdatePage(home.ID, store.PageUpdate{Blocks: &blocks}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	html := read(t, b, "index.html")
+	for _, want := range []string{`class="b b-hero h-short bg-brand align-center"`, `class="b b-text pt-xl w-narrow"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if css := read(t, b, "assets/site.css"); !strings.Contains(css, "--contrast-bg:") || !strings.Contains(css, ".b-hero.h-short") {
+		t.Error("style tokens or classes missing from site.css")
+	}
+}
+
+func TestHideTitle(t *testing.T) {
+	st, b := setup(t, "business")
+	tree, _ := st.Tree()
+	var about *store.Page
+	for _, p := range tree.Pages {
+		if p.Slug == "about" {
+			about = p
+		}
+	}
+	hide := true
+	if _, err := st.UpdatePage(about.ID, store.PageUpdate{HideTitle: &hide}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	html := read(t, b, "about/index.html")
+	if strings.Contains(html, `class="page-head`) {
+		t.Error("visible page title still shown")
+	}
+	if !strings.Contains(html, `<h1 class="sr-only">About</h1>`) {
+		t.Error("hidden h1 missing: search engines and screen readers lose the title")
+	}
+	if !strings.Contains(read(t, b, "contact/index.html"), `class="page-head`) {
+		t.Error("other pages should keep their title")
 	}
 }

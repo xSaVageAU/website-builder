@@ -223,9 +223,10 @@ func (s *Server) adminIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
-		"blocks":   blocks.Types,
-		"starters": starter.Kinds,
-		"fonts":    store.FontOptions,
+		"blocks":      blocks.Types,
+		"styleFields": blocks.StyleFields,
+		"starters":    starter.Kinds,
+		"fonts":       store.FontOptions,
 		// Platforms a download can include a website server for.
 		"servers":       serverbin.List(),
 		"defaultServer": serverbin.Default(),

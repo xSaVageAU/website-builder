@@ -36,6 +36,7 @@ p { margin: 0 0 1em; }
 .narrow { width: min(44rem, 100% - 2.5rem); margin-inline: auto; }
 .align-center { text-align: center; }
 
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .skip { position: absolute; left: -999px; top: 0; background: var(--primary); color: var(--on-primary); padding: .5rem 1rem; z-index: 10; }
 .skip:focus { left: 1rem; }
 
@@ -230,6 +231,64 @@ p { margin: 0 0 1em; }
 .subpages-list { padding-left: 1.2em; }
 
 .b-divider hr { border: 0; border-top: 1px solid var(--border); margin: 0; }
+
+/* ---------- Section style choices ----------
+   Classes come from each section's Style drawer. They sit after the block
+   styles above so they win at equal specificity. */
+
+.b.pt-none { padding-top: 0; }
+.b.pt-s { padding-top: calc(var(--space) * 0.2); }
+.b.pt-m { padding-top: calc(var(--space) * 0.5); }
+.b.pt-l { padding-top: var(--space); }
+.b.pt-xl { padding-top: calc(var(--space) * 1.6); }
+.b.pb-none { padding-bottom: 0; }
+.b.pb-s { padding-bottom: calc(var(--space) * 0.2); }
+.b.pb-m { padding-bottom: calc(var(--space) * 0.5); }
+.b.pb-l { padding-bottom: var(--space); }
+.b.pb-xl { padding-bottom: calc(var(--space) * 1.6); }
+
+.b-hero.h-short { padding-block: calc(var(--space) * 0.35); }
+.b-hero.h-medium { padding-block: calc(var(--space) * 1.3); }
+.b-hero.h-tall { padding-block: calc(var(--space) * 2.4); }
+.b-hero.h-full { min-height: calc(100svh - 4.25rem); display: flex; align-items: center; padding-block: var(--space); }
+.b-cta.h-short .cta-box { padding-block: calc(var(--space) * 0.35); }
+.b-cta.h-medium .cta-box { padding-block: calc(var(--space) * 0.7); }
+.b-cta.h-tall .cta-box { padding-block: calc(var(--space) * 1.3); }
+.b-cta.h-full .cta-box { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
+.w-narrow :is(.wrap, .narrow) { width: min(36rem, 100% - 2.5rem); }
+.w-medium :is(.wrap, .narrow) { width: min(52rem, 100% - 2.5rem); }
+.w-wide :is(.wrap, .narrow) { width: min(72rem, 100% - 2.5rem); }
+.w-full :is(.wrap, .narrow) { width: calc(100% - 2.5rem); }
+
+/* Backgrounds swap the palette variables, so text, cards, links and
+   borders inside the section adapt on their own. */
+.b.bg-plain { background: var(--page-bg); }
+.b.bg-soft { --surface: var(--page-bg); background: var(--primary-soft); }
+.b.bg-brand {
+  --bg: var(--primary);
+  --text: var(--on-primary);
+  --muted: color-mix(in srgb, var(--on-primary) 78%, var(--primary));
+  --surface: color-mix(in srgb, var(--on-primary) 12%, var(--primary));
+  --border: color-mix(in srgb, var(--on-primary) 30%, var(--primary));
+  --link: var(--on-primary);
+  --primary-soft: color-mix(in srgb, var(--on-primary) 15%, var(--primary));
+}
+.b.bg-contrast {
+  --bg: var(--contrast-bg);
+  --text: var(--contrast-text);
+  --muted: var(--contrast-muted);
+  --surface: var(--contrast-surface);
+  --border: var(--contrast-border);
+  --link: var(--contrast-link);
+  --primary-soft: var(--contrast-surface);
+}
+.b.bg-brand, .b.bg-contrast { background: var(--bg); color: var(--text); }
+/* On a brand-coloured band, brand-coloured things need flipping. */
+.bg-brand .btn { background: var(--on-primary); color: var(--primary); border-color: var(--on-primary); }
+.bg-brand .btn-secondary { background: transparent; color: var(--on-primary); }
+.bg-brand .cta-box { background: var(--surface); }
+.bg-brand blockquote p::before { color: var(--on-primary); }
 
 /* Shown only in the editor preview, never in the published site. */
 .placeholder {

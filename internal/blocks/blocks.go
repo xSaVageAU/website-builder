@@ -51,12 +51,70 @@ type Type struct {
 	Description string  `json:"description"`
 	Icon        string  `json:"icon"`
 	Fields      []Field `json:"fields"`
+	// Style lists the keys of StyleFields this section type offers.
+	Style []string `json:"style"`
 }
 
 type Block struct {
-	ID   string         `json:"id"`
-	Type string         `json:"type"`
-	Data map[string]any `json:"data"`
+	ID    string         `json:"id"`
+	Type  string         `json:"type"`
+	Data  map[string]any `json:"data"`
+	Style map[string]any `json:"style,omitempty"` // only the choices that differ from "auto"
+}
+
+// StyleFields are the fine-tuning controls shared by every section type.
+// Each is a few steps rather than a free number, so any combination still
+// looks right. The empty value means "auto": whatever the theme does.
+var StyleFields = []Field{
+	{Key: "spaceTop", Kind: "choice", Label: "Space above", Options: steps},
+	{Key: "spaceBottom", Kind: "choice", Label: "Space below", Options: steps},
+	{Key: "height", Kind: "choice", Label: "Height", Options: []Option{
+		{"", "Auto"}, {"short", "Short"}, {"medium", "Medium"}, {"tall", "Tall"}, {"full", "Full screen"}}},
+	{Key: "background", Kind: "choice", Label: "Background", Options: []Option{
+		{"", "Auto"}, {"plain", "Plain"}, {"soft", "Soft"}, {"brand", "Brand"}, {"contrast", "Contrast"}}},
+	{Key: "width", Kind: "choice", Label: "Content width", Options: []Option{
+		{"", "Auto"}, {"narrow", "Narrow"}, {"medium", "Medium"}, {"wide", "Wide"}, {"full", "Full"}}},
+}
+
+var steps = []Option{{"", "Auto"}, {"none", "None"}, {"s", "S"}, {"m", "M"}, {"l", "L"}, {"xl", "XL"}}
+
+// Which style controls each section type gets, if not the default set.
+var (
+	defaultStyle = []string{"spaceTop", "spaceBottom", "background", "width"}
+	styleFor     = map[string][]string{
+		"hero":    {"height", "background", "width"},
+		"cta":     {"spaceTop", "spaceBottom", "height", "background", "width"},
+		"image":   {"spaceTop", "spaceBottom", "background"}, // has its own width choice
+		"divider": {"spaceTop", "spaceBottom", "width"},
+	}
+)
+
+func init() {
+	for i := range Types {
+		if s, ok := styleFor[Types[i].Type]; ok {
+			Types[i].Style = s
+		} else {
+			Types[i].Style = defaultStyle
+		}
+	}
+}
+
+func normalizeStyle(t *Type, in map[string]any) map[string]any {
+	var out map[string]any
+	for _, key := range t.Style {
+		for _, f := range StyleFields {
+			if f.Key != key {
+				continue
+			}
+			if v, _ := normalizeValue(f, in[key]).(string); v != "" {
+				if out == nil {
+					out = map[string]any{}
+				}
+				out[key] = v
+			}
+		}
+	}
+	return out
 }
 
 var (
@@ -262,9 +320,10 @@ func newID() string {
 // text is sanitised.
 func Normalize(raw json.RawMessage) (json.RawMessage, error) {
 	var in []struct {
-		ID   string         `json:"id"`
-		Type string         `json:"type"`
-		Data map[string]any `json:"data"`
+		ID    string         `json:"id"`
+		Type  string         `json:"type"`
+		Data  map[string]any `json:"data"`
+		Style map[string]any `json:"style"`
 	}
 	if len(raw) == 0 {
 		raw = json.RawMessage("[]")
@@ -284,7 +343,7 @@ func Normalize(raw json.RawMessage) (json.RawMessage, error) {
 			id = newID()
 		}
 		seen[id] = true
-		out = append(out, Block{ID: id, Type: b.Type, Data: normalizeFields(t.Fields, b.Data)})
+		out = append(out, Block{ID: id, Type: b.Type, Data: normalizeFields(t.Fields, b.Data), Style: normalizeStyle(t, b.Style)})
 	}
 	return json.Marshal(out)
 }
