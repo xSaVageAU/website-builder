@@ -135,6 +135,8 @@ type PageView struct {
 	TitleHidden bool // page title switched off: only a hidden <h1> for search engines and screen readers
 	Blocks      []BlockView
 	FooterText  string
+	Header      HeaderView
+	Footer      FooterView
 	Year        int
 	IsHome      bool
 	Preview     bool
@@ -466,6 +468,8 @@ func (r *Renderer) pageView(c *pageCtx, title string) PageView {
 		FooterText: s.Info.FooterText,
 		Year:       time.Now().Year(),
 		Preview:    c.mode == Preview,
+		Header:     c.header(),
+		Footer:     c.footer(),
 	}
 	return v
 }
@@ -560,6 +564,7 @@ func (r *Renderer) CSS(t store.Theme) string {
 	fmt.Fprintf(&b, "  --page-bg: %s;\n  --contrast-bg: %s;\n  --contrast-text: %s;\n  --contrast-muted: %s;\n  --contrast-surface: %s;\n  --contrast-border: %s;\n  --contrast-link: %s;\n",
 		palette["--bg"], cbg, ctext, cmuted, csurface, cborder, clink)
 	fmt.Fprintf(&b, "  --font-head: %s;\n  --font-body: %s;\n", fonts[0], fonts[1])
+	fmt.Fprintf(&b, "  --hs: %s;\n", map[string]string{"small": "0.86", "normal": "1", "large": "1.15"}[t.Heading])
 	fmt.Fprintf(&b, "  --radius: %s;\n  --radius-sm: %s;\n  --radius-btn: %s;\n  --space: %s;\n", radius[0], radius[1], radius[2], space)
 	if t.Mode == "dark" {
 		b.WriteString("  color-scheme: dark;\n")

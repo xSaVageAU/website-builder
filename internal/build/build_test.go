@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -235,5 +236,56 @@ func TestHideTitle(t *testing.T) {
 	}
 	if !strings.Contains(read(t, b, "contact/index.html"), `class="page-head`) {
 		t.Error("other pages should keep their title")
+	}
+}
+
+func TestHeaderAndFooter(t *testing.T) {
+	st, b := setup(t, "business")
+	tree, _ := st.Tree()
+	var contact *store.Page
+	for _, p := range tree.Pages {
+		if p.Slug == "contact" {
+			contact = p
+		}
+	}
+	site, _ := st.Site()
+	site.Header = store.Header{Layout: "centered", Background: "brand", Sticky: false,
+		ButtonLabel: "Book now", ButtonLink: fmt.Sprintf("page:%d", contact.ID)}
+	site.FooterText = "123 Example St"
+	site.Footer = store.Footer{
+		Links:      []store.FooterLink{{Label: "Privacy", Link: "example.com/privacy"}, {Label: "Contact", Link: fmt.Sprintf("page:%d", contact.ID)}},
+		Social:     map[string]string{"instagram": "instagram.com/me", "email": "me@example.com", "myspace": "nope"},
+		Background: "contrast",
+	}
+	site.Theme.Heading = "large"
+	if err := st.SaveSite(site); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	html := read(t, b, "about/index.html")
+	for _, want := range []string{
+		`<header class="site-header header-centered not-sticky bg-brand">`,
+		`<a class="btn header-btn" href="../contact/">Book now</a>`,
+		`<footer class="site-footer bg-contrast">`,
+		`<a href="https://example.com/privacy">Privacy</a>`,
+		`<a href="../contact/">Contact</a>`,
+		`href="https://instagram.com/me" aria-label="Instagram"`,
+		`href="mailto:me@example.com" aria-label="Email"`,
+		`123 Example St`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(html, "&copy;") {
+		t.Error("copyright shown although switched off")
+	}
+	if strings.Contains(html, "myspace") {
+		t.Error("unknown social network rendered")
+	}
+	if !strings.Contains(read(t, b, "assets/site.css"), "--hs: 1.15;") {
+		t.Error("heading size token missing")
 	}
 }

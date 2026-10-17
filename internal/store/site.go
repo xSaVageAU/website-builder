@@ -6,6 +6,8 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+
+	"sitesmith/internal/blocks"
 )
 
 // Theme is a handful of design tokens. Users pick from small option sets so
@@ -16,7 +18,34 @@ type Theme struct {
 	Shape   string `json:"shape"`   // rounded | soft | sharp
 	Density string `json:"density"` // airy | compact
 	Mode    string `json:"mode"`    // light | dark
+	Heading string `json:"heading"` // heading size: small | normal | large
 }
+
+// Header is the bar at the top of every page.
+type Header struct {
+	Layout      string `json:"layout"`     // classic (logo left, menu right) | centered
+	Background  string `json:"background"` // "" (plain) | soft | brand | contrast
+	Sticky      bool   `json:"sticky"`     // stays at the top while scrolling
+	ButtonLabel string `json:"buttonLabel"`
+	ButtonLink  string `json:"buttonLink"` // "page:<id>" or a URL, like section links
+}
+
+type FooterLink struct {
+	Label string `json:"label"`
+	Link  string `json:"link"`
+}
+
+// Footer is the strip at the bottom of every page. Its text lives in
+// Site.FooterText, which predates this struct.
+type Footer struct {
+	Links         []FooterLink      `json:"links"`
+	Social        map[string]string `json:"social"`     // network -> profile link, see SocialNetworks
+	Background    string            `json:"background"` // "" (subtle) | plain | soft | brand | contrast
+	ShowCopyright bool              `json:"showCopyright"`
+}
+
+// SocialNetworks are the profiles a footer can link to, in display order.
+var SocialNetworks = []string{"instagram", "facebook", "x", "linkedin", "youtube", "tiktok", "github", "email"}
 
 type Site struct {
 	Name       string `json:"name"`
@@ -28,6 +57,8 @@ type Site struct {
 	Language   string `json:"language"`
 	SetupDone  bool   `json:"setupDone"`
 	Theme      Theme  `json:"theme"`
+	Header     Header `json:"header"`
+	Footer     Footer `json:"footer"`
 }
 
 var (
@@ -35,6 +66,8 @@ var (
 	ShapeOptions   = []string{"rounded", "soft", "sharp"}
 	DensityOptions = []string{"airy", "compact"}
 	ModeOptions    = []string{"light", "dark"}
+	HeadingOptions = []string{"normal", "small", "large"}
+	LayoutOptions  = []string{"classic", "centered"}
 
 	hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 	langCode = regexp.MustCompile(`^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})?$`)
@@ -50,8 +83,19 @@ func DefaultSite() Site {
 			Shape:   "rounded",
 			Density: "airy",
 			Mode:    "light",
+			Heading: "normal",
 		},
+		Header: Header{Layout: "classic", Sticky: true},
+		Footer: Footer{ShowCopyright: true},
 	}
+}
+
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func oneOf(v string, opts []string) string {
@@ -91,6 +135,32 @@ func (s *Site) Normalize() {
 	s.Theme.Shape = oneOf(s.Theme.Shape, ShapeOptions)
 	s.Theme.Density = oneOf(s.Theme.Density, DensityOptions)
 	s.Theme.Mode = oneOf(s.Theme.Mode, ModeOptions)
+	s.Theme.Heading = oneOf(s.Theme.Heading, HeadingOptions)
+
+	s.Header.Layout = oneOf(s.Header.Layout, LayoutOptions)
+	s.Header.Background = oneOf(s.Header.Background, []string{"", "soft", "brand", "contrast"})
+	s.Header.ButtonLabel = clip(s.Header.ButtonLabel, 40)
+	s.Header.ButtonLink = blocks.CleanLink(s.Header.ButtonLink)
+
+	s.Footer.Background = oneOf(s.Footer.Background, []string{"", "plain", "soft", "brand", "contrast"})
+	links := []FooterLink{}
+	for _, l := range s.Footer.Links {
+		l.Label, l.Link = clip(l.Label, 60), blocks.CleanLink(l.Link)
+		if l.Label != "" || l.Link != "" { // keep half-filled rows while someone is typing
+			links = append(links, l)
+		}
+		if len(links) == 12 {
+			break
+		}
+	}
+	s.Footer.Links = links
+	social := map[string]string{}
+	for _, n := range SocialNetworks {
+		if v := blocks.CleanLink(s.Footer.Social[n]); v != "" {
+			social[n] = v
+		}
+	}
+	s.Footer.Social = social
 }
 
 func (s *Store) Site() (Site, error) {

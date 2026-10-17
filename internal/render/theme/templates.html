@@ -21,7 +21,7 @@
 </head>
 <body{{if .IsHome}} class="is-home"{{end}}>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header">
+<header class="site-header {{.Header.Class}}">
   <div class="wrap header-inner">
     <a class="brand" href="{{.HomeHref}}">{{if .Logo}}<img src="{{.Logo.Src}}" alt="{{.SiteName}}" width="{{.Logo.Width}}" height="{{.Logo.Height}}">{{else}}{{.SiteName}}{{end}}</a>
     {{- if .Nav}}
@@ -43,6 +43,9 @@
       </ul>
     </nav>
     {{- end}}
+    {{- with .Header.Button}}
+    <a class="btn header-btn" href="{{or .Href "#"}}">{{.Label}}</a>
+    {{- end}}
   </div>
 </header>
 <main id="main">
@@ -63,10 +66,28 @@
 <section class="b"><div class="narrow placeholder">This page is empty. Add a section from the editor on the left.</div></section>
 {{- end}}
 </main>
-<footer class="site-footer">
-  <div class="wrap">
-    {{- with .FooterText}}<p>{{.}}</p>{{end}}
-    <p>&copy; {{.Year}} {{.SiteName}}</p>
+<footer class="site-footer{{with .Footer.Class}} {{.}}{{end}}">
+  <div class="wrap footer-inner">
+    {{- with .FooterText}}
+    <p class="footer-text">{{.}}</p>
+    {{- end}}
+    {{- with .Footer.Links}}
+    <nav class="footer-links" aria-label="Footer"><ul>
+      {{- range .}}<li><a href="{{or .Href "#"}}">{{.Label}}</a></li>{{end -}}
+    </ul></nav>
+    {{- end}}
+    {{- if or .Footer.Social .Footer.Copyright}}
+    <div class="footer-bottom">
+      {{- with .Footer.Social}}
+      <ul class="social">
+        {{- range .}}<li><a href="{{.Href}}" aria-label="{{.Label}}" title="{{.Label}}">{{.Icon}}</a></li>{{end -}}
+      </ul>
+      {{- end}}
+      {{- if .Footer.Copyright}}
+      <p class="copy">&copy; {{.Year}} {{.SiteName}}</p>
+      {{- end}}
+    </div>
+    {{- end}}
   </div>
 </footer>
 {{- if .Preview}}

@@ -430,3 +430,8 @@ select.input { padding-right: 28px; }
 .kind-card:hover { background: var(--hover); }
 .kind-card.on { border-color: var(--accent); box-shadow: 0 0 0 3px rgb(76 110 245 / 0.18); background: var(--accent-soft); }
 .wizard-look h3 { font-size: 14px; margin: 4px 0 10px; }
+
+/* Design → Footer → Social links */
+.social-fields { display: grid; gap: 6px; }
+.social-field { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.social-field .input { padding: 6px 9px; }

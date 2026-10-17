@@ -27,9 +27,10 @@ h1, h2, h3 {
   font-weight: 700;
   text-wrap: balance;
 }
-h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); }
-h2 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); }
-h3 { font-size: 1.3rem; }
+/* --hs scales headings: the Heading size choice in Design. */
+h1 { font-size: calc(clamp(2.2rem, 5vw, 3.6rem) * var(--hs, 1)); }
+h2 { font-size: calc(clamp(1.7rem, 3.2vw, 2.4rem) * var(--hs, 1)); }
+h3 { font-size: calc(1.3rem * var(--hs, 1)); }
 p { margin: 0 0 1em; }
 
 .wrap { width: min(72rem, 100% - 2.5rem); margin-inline: auto; }
@@ -60,6 +61,13 @@ p { margin: 0 0 1em; }
   letter-spacing: -0.01em;
 }
 .brand img { max-height: 2.75rem; width: auto; }
+.site-header.not-sticky { position: static; }
+.header-btn { padding: 0.55rem 1.15rem; font-size: 0.95rem; }
+
+/* Centred: logo on its own row, menu and button centred beneath. */
+.header-centered .header-inner { flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; padding-block: 0.9rem 0.6rem; }
+.header-centered .brand { flex-basis: 100%; margin-right: 0; display: flex; justify-content: center; }
+.header-centered .site-nav > ul { justify-content: center; }
 
 .site-nav ul { list-style: none; margin: 0; padding: 0; }
 .site-nav > ul { display: flex; gap: 0.25rem; flex-wrap: wrap; }
@@ -104,6 +112,13 @@ p { margin: 0 0 1em; }
 .nav-button { display: none; cursor: pointer; font-weight: 600; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius-sm); user-select: none; }
 
 @media (max-width: 52rem) {
+  .brand { order: 1; }
+  .header-inner { gap: 0.6rem; }
+  .header-btn { order: 2; padding: 0.4rem 0.8rem; font-size: 0.875rem; }
+  .nav-button { order: 3; }
+  .site-nav { order: 4; }
+  .header-centered .header-inner { padding-block: 0; gap: 0.6rem; }
+  .header-centered .brand { flex-basis: auto; margin-right: auto; }
   .header-inner { flex-wrap: wrap; }
   .nav-button { display: block; }
   .site-nav { display: none; width: 100%; padding-bottom: 1rem; }
@@ -159,7 +174,7 @@ p { margin: 0 0 1em; }
 .b-hero .hero-inner { position: relative; z-index: 1; }
 .b-hero.align-center .hero-inner { text-align: center; }
 .b-hero.align-center .lead { margin-inline: auto; }
-.b-hero h1, .b-hero h2 { font-size: clamp(2.4rem, 6vw, 4.2rem); max-width: 18ch; }
+.b-hero h1, .b-hero h2 { font-size: calc(clamp(2.4rem, 6vw, 4.2rem) * var(--hs, 1)); max-width: 18ch; }
 .b-hero.align-center h1, .b-hero.align-center h2 { margin-inline: auto; }
 .b-hero .lead { font-size: 1.25rem; max-width: 38rem; color: var(--muted); white-space: pre-line; }
 .b-hero .btn { margin-top: 0.75rem; }
@@ -264,8 +279,8 @@ p { margin: 0 0 1em; }
 /* Backgrounds swap the palette variables, so text, cards, links and
    borders inside the section adapt on their own. */
 .b.bg-plain { background: var(--page-bg); }
-.b.bg-soft { --surface: var(--page-bg); background: var(--primary-soft); }
-.b.bg-brand {
+.b.bg-soft, .site-header.bg-soft, .site-footer.bg-soft { --surface: var(--page-bg); background: var(--primary-soft); }
+.b.bg-brand, .site-header.bg-brand, .site-footer.bg-brand {
   --bg: var(--primary);
   --text: var(--on-primary);
   --muted: color-mix(in srgb, var(--on-primary) 78%, var(--primary));
@@ -274,7 +289,7 @@ p { margin: 0 0 1em; }
   --link: var(--on-primary);
   --primary-soft: color-mix(in srgb, var(--on-primary) 15%, var(--primary));
 }
-.b.bg-contrast {
+.b.bg-contrast, .site-header.bg-contrast, .site-footer.bg-contrast {
   --bg: var(--contrast-bg);
   --text: var(--contrast-text);
   --muted: var(--contrast-muted);
@@ -283,7 +298,10 @@ p { margin: 0 0 1em; }
   --link: var(--contrast-link);
   --primary-soft: var(--contrast-surface);
 }
-.b.bg-brand, .b.bg-contrast { background: var(--bg); color: var(--text); }
+.b.bg-brand, .b.bg-contrast,
+.site-header.bg-brand, .site-header.bg-contrast,
+.site-footer.bg-brand, .site-footer.bg-contrast { background: var(--bg); color: var(--text); }
+.site-footer.bg-plain { background: var(--page-bg); border-top: 1px solid var(--border); }
 /* On a brand-coloured band, brand-coloured things need flipping. */
 .bg-brand .btn { background: var(--on-primary); color: var(--primary); border-color: var(--on-primary); }
 .bg-brand .btn-secondary { background: transparent; color: var(--on-primary); }
@@ -310,5 +328,14 @@ p { margin: 0 0 1em; }
   font-size: 0.93rem;
 }
 .site-footer p { margin: 0.25rem 0; white-space: pre-line; }
-.site-footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem; }
+.footer-inner { display: grid; gap: 1.1rem; }
+.footer-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; }
+.footer-links a { color: var(--text); text-decoration: none; font-weight: 500; }
+.footer-links a:hover { text-decoration: underline; }
+.footer-bottom { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--border); }
+.footer-bottom:first-child { border-top: 0; padding-top: 0; }
+.social { list-style: none; margin: 0 0 0 -0.5rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.social a { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: var(--radius-sm); color: var(--muted); }
+.social a:hover { color: var(--text); background: var(--primary-soft); }
+.footer-bottom .copy { margin: 0; }
 .b-cta:last-child { padding-bottom: 0; }
