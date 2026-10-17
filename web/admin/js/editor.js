@@ -54,12 +54,12 @@ export function mountPageEditor(root, page, app) {
   const desc = h('textarea', { class: 'input', rows: 2, maxlength: 300, placeholder: 'One or two sentences about this page.',
     onInput: (e) => { page.description = e.target.value; save(); } });
   desc.value = page.description || '';
-  const seo = h('details', { class: 'seo' },
-    h('summary', {}, 'Search & sharing'),
-    h('div', { class: 'field' },
-      h('label', { class: 'field-label' }, 'Description'),
-      desc,
-      h('div', { class: 'field-help' }, 'Shown in Google results, when the page is shared, and in subpage lists.')));
+  // Always visible: it feeds subpage cards, search results and link previews,
+  // and people missed it when it sat in a collapsed section.
+  const seo = h('div', { class: 'field page-summary' },
+    h('label', { class: 'field-label' }, 'Summary'),
+    desc,
+    h('div', { class: 'field-help' }, 'Shown on subpage cards, in Google results and when the page is shared.'));
 
   // ---------- sections ----------
 
@@ -99,7 +99,9 @@ export function mountPageEditor(root, page, app) {
           });
         }, 'danger')),
       isCollapsed ? null : h('div', { class: 'block-body' },
-        t.fields?.length ? renderFields(t.fields, b.data, ctx) : h('p', { class: 'muted' }, t.description)));
+        t.fields?.length ? renderFields(t.fields, b.data, ctx) : h('p', { class: 'muted' }, t.description),
+        b.type === 'subpages' ? h('p', { class: 'field-help' },
+          "Each card shows a subpage's title and the Summary at the top of that page.") : null));
     return el;
   };
 

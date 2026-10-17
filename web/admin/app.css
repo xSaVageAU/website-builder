@@ -198,9 +198,7 @@ select.input { padding-right: 28px; }
 .slug-input:hover { border-color: var(--border-strong); }
 .slug-input:focus { border-color: var(--accent); border-style: solid; background: var(--panel); }
 .page-flags { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
-.seo { border-top: 1px solid var(--border); padding: 8px 0; }
-.seo summary { cursor: pointer; font-size: 13px; font-weight: 500; color: var(--muted); padding: 2px 0; }
-.seo .field { margin-top: 10px; }
+.page-summary { border-top: 1px solid var(--border); padding-top: 10px; }
 
 .blocks { display: flex; flex-direction: column; }
 .block-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); transition: border-color 0.15s, box-shadow 0.15s; }
