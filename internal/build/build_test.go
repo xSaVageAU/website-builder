@@ -1,6 +1,8 @@
 package build
 
 import (
+	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,5 +149,39 @@ func TestDraftHidesBranch(t *testing.T) {
 	// Home links to the draft page, which should be reported.
 	if len(rep.Warnings) == 0 {
 		t.Error("expected a warning about links to the draft page")
+	}
+}
+
+func TestZipWithServer(t *testing.T) {
+	_, b := setup(t, "blank")
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := Zip(b.OutDir, &buf, "site/",
+		ExtraFile{Name: "website-server", Data: []byte("bin"), Mode: 0o755},
+		ExtraFile{Name: "README.txt", Data: SelfHostReadme("Test", "linux", "website-server"), Mode: 0o644})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modes := map[string]os.FileMode{}
+	for _, f := range zr.File {
+		modes[f.Name] = f.Mode()
+		if f.Modified.Year() < 2000 {
+			t.Errorf("%s has no real date: %v", f.Name, f.Modified)
+		}
+	}
+	if modes["website-server"] != 0o755 {
+		t.Errorf("server mode = %v, want runnable", modes["website-server"])
+	}
+	if _, ok := modes["site/index.html"]; !ok {
+		t.Errorf("site not under site/: %v", modes)
+	}
+	if _, ok := modes["index.html"]; ok {
+		t.Error("site files also at the top level")
 	}
 }

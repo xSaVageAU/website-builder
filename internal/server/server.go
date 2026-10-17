@@ -24,6 +24,7 @@ import (
 	"sitesmith/internal/build"
 	"sitesmith/internal/media"
 	"sitesmith/internal/render"
+	"sitesmith/internal/serverbin"
 	"sitesmith/internal/starter"
 	"sitesmith/internal/store"
 )
@@ -225,6 +226,9 @@ func (s *Server) schema(w http.ResponseWriter, r *http.Request) {
 		"blocks":   blocks.Types,
 		"starters": starter.Kinds,
 		"fonts":    store.FontOptions,
+		// Platforms a download can include a website server for.
+		"servers":       serverbin.List(),
+		"defaultServer": serverbin.Default(),
 	})
 }
 
@@ -676,7 +680,27 @@ func (s *Server) build() (*build.Report, error) {
 	return rep, s.c().st.MarkPublished()
 }
 
+// export downloads the site as a ZIP. With ?server=<os-arch> it also
+// includes the website server for that platform, with the site in a "site"
+// folder next to it, so the download can host itself.
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
+	var extras []build.ExtraFile
+	prefix, suffix := "", ""
+	if id := r.URL.Query().Get("server"); id != "" {
+		t, bin, err := serverbin.Binary(id)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		name := serverbin.FileName(t)
+		site, _ := s.c().st.Site()
+		extras = []build.ExtraFile{
+			{Name: name, Data: bin, Mode: 0o755},
+			{Name: "README.txt", Data: build.SelfHostReadme(site.Name, t.OS, name), Mode: 0o644},
+		}
+		prefix, suffix = "site/", "-"+t.ID
+	}
+
 	s.buildMu.Lock()
 	defer s.buildMu.Unlock()
 	if _, err := s.build(); err != nil {
@@ -685,8 +709,8 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	}
 	site, _ := s.c().st.Site()
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, store.Slugify(site.Name)))
-	if err := build.Zip(s.c().distDir, w); err != nil {
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s%s.zip"`, store.Slugify(site.Name), suffix))
+	if err := build.Zip(s.c().distDir, w, prefix, extras...); err != nil {
 		log.Printf("zip: %v", err)
 	}
 }

@@ -413,8 +413,8 @@ async function publish() {
       h('ul', {}, rep.warnings.map((w) => h('li', {}, w)))) : null,
     h('div', { class: 'publish-actions' },
       h('a', { class: 'btn primary', href: '/site/', target: '_blank', rel: 'noopener' }, icon('external'), 'View published site'),
-      h('a', { class: 'btn', href: '/api/export', download: '' }, icon('download'), 'Download as ZIP'),
       h('button', { type: 'button', class: 'btn', onClick: () => api.openFolder().catch((e) => toast(e.message, 'error')) }, icon('folder'), 'Open folder')),
+    downloadBox(),
     h('details', { class: 'hosting' },
       h('summary', {}, 'How do I put it online for free?'),
       h('p', {}, 'Your site is a folder of ordinary files, so it works with any web host. Some free options:'),
@@ -424,6 +424,41 @@ async function publish() {
         h('li', {}, h('strong', {}, 'GitHub Pages'), ' — upload the files to a repository and turn on Pages.'),
         h('li', {}, h('strong', {}, 'Any web host'), ' — upload the contents of the ZIP with their file manager or FTP.')),
       h('p', { class: 'muted' }, `The folder is at ${rep.outputDir}. Publish again whenever you make changes, then upload the new files.`)));
+}
+
+// "Download as ZIP", optionally with a small web server so the download can
+// host itself. The server has to match the computer that will run it, which
+// isn't necessarily this one.
+function downloadBox() {
+  const targets = app.schema.servers || [];
+  const available = targets.filter((t) => t.available);
+  const saved = store.get('sitesmith.serverTarget');
+  const pick = available.find((t) => t.id === saved) || available.find((t) => t.id === app.schema.defaultServer) || available[0];
+
+  const link = h('a', { class: 'btn', download: '' }, icon('download'), 'Download as ZIP');
+  const include = h('input', { type: 'checkbox', disabled: !available.length, checked: !!available.length && store.get('sitesmith.includeServer') === '1' });
+  const select = h('select', { class: 'input', disabled: !available.length },
+    available.map((t) => h('option', { value: t.id, selected: t === pick }, t.label + (t.id === app.schema.defaultServer ? ' (this computer)' : ''))));
+  const runsOn = h('div', { class: 'runs-on' }, h('span', {}, 'Runs on'), select);
+
+  const update = () => {
+    runsOn.hidden = !include.checked;
+    link.href = include.checked && select.value ? `/api/export?server=${encodeURIComponent(select.value)}` : '/api/export';
+    store.set('sitesmith.includeServer', include.checked ? '1' : '0');
+    if (select.value) store.set('sitesmith.serverTarget', select.value);
+  };
+  include.addEventListener('change', update);
+  select.addEventListener('change', update);
+  update();
+
+  return h('div', { class: 'download-box' },
+    link,
+    h('label', { class: 'check' }, include,
+      h('span', {}, h('strong', {}, 'Include a web server'),
+        h('small', {}, available.length
+          ? 'Adds a small program that hosts the site: run it and the site is online. Instructions are in the README inside the ZIP.'
+          : 'Not included in this copy of Sitesmith. Build it with "go run ./tools/build" to add it.'))),
+    runsOn);
 }
 
 // ---------- start ----------

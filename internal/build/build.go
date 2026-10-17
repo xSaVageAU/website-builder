@@ -208,8 +208,29 @@ func copyFile(src, dst string) error {
 }
 
 // Zip streams the built folder as a zip archive.
-func Zip(dir string, w io.Writer) error {
+// ExtraFile is something added to an export next to the site, such as the
+// self-hosting server and its instructions.
+type ExtraFile struct {
+	Name string
+	Data []byte
+	Mode fs.FileMode // 0755 for programs, so they stay runnable on Mac and Linux
+}
+
+// Zip streams the built folder as a zip archive. Site files go under prefix
+// (e.g. "site/"), extras at the top level.
+func Zip(dir string, w io.Writer, prefix string, extras ...ExtraFile) error {
 	zw := zip.NewWriter(w)
+	for _, e := range extras {
+		hdr := &zip.FileHeader{Name: e.Name, Method: zip.Deflate, Modified: time.Now()}
+		hdr.SetMode(e.Mode)
+		f, err := zw.CreateHeader(hdr)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(e.Data); err != nil {
+			return err
+		}
+	}
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -218,7 +239,17 @@ func Zip(dir string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		f, err := zw.Create(filepath.ToSlash(rel))
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		hdr, err := zip.FileInfoHeader(info) // keeps the real modified date
+		if err != nil {
+			return err
+		}
+		hdr.Name, hdr.Method = prefix+filepath.ToSlash(rel), zip.Deflate
+		hdr.SetMode(0o644)
+		f, err := zw.CreateHeader(hdr)
 		if err != nil {
 			return err
 		}

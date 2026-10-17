@@ -30,7 +30,29 @@ A data folder from before multi-site support (with `site.db` at the top level) i
 
 Flags: `-data <folder>`, `-addr 127.0.0.1:4321`, `-no-browser`.
 
-Build a single binary with `go build -o sitesmith.exe .`. The admin UI and theme are embedded in it, so the binary has no other runtime dependencies.
+### Building a release
+
+```bash
+go run ./tools/build
+```
+
+This writes `dist/sitesmith-<os>-<arch>`: one file with no other runtime dependencies. The admin UI, the theme and the self-hosting web servers (below) are all embedded in it. Add `-goos linux -goarch arm64` (or similar) to build for another platform.
+
+A plain `go build` or `go run .` also works, but leaves out the web servers, so the export dialog says they aren't included. Run the build script once and `go run .` picks them up as well.
+
+### Hosting it yourself
+
+In the Publish dialog, tick **Include a web server** before **Download as ZIP**, and pick the computer it will run on. The download then contains:
+
+```
+site/                 the website
+website-server(.exe)  a small program that hosts it
+README.txt            how to start it, written for that platform
+```
+
+Running `website-server` serves the `site` folder next to it on port 8080, or the next free port. It prints the address on this computer and on the local network. Flags: `-port` (or `$PORT`), `-local`, `-dir`, `-no-browser`. It serves clean URLs, the 404 page and sensible cache headers, and refuses folder listings, hidden files and anything outside `site`.
+
+The server (`cmd/website-server`) uses only Go's standard library. `tools/build` compiles it for Windows, Mac (Apple silicon and Intel), Linux and Raspberry Pi. It compresses each copy into `internal/serverbin/bin/`, which git ignores, so no binaries live in the repo.
 
 Run the tests with `go test ./...`.
 
@@ -74,7 +96,7 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 
 **Publishing is the weakest step for non-technical users.** "Here's a folder, upload it somewhere" is still a hurdle. Options:
 1. One-click deploy integrations (Netlify / Cloudflare Pages / GitHub Pages APIs). This needs OAuth or tokens, and those are external accounts.
-2. A "Sitesmith host" mode: the same binary on a cheap VPS or Raspberry Pi serves the published folder. It's free software, but someone still pays for the box.
+2. Self-hosting. *Done in a basic form:* a download can include `website-server` (see "Hosting it yourself"). It speaks plain HTTP only, so the next step is built-in HTTPS (automatic Let's Encrypt certificates when given a domain name). Someone still pays for the machine it runs on.
 3. A community-run free host. This is the closest to "free for everyone", but it's an ongoing cost and an abuse-handling problem.
 
 **Local app vs. hosted editor.** The editor currently runs on one computer, which is simple, private and free. But you can't edit from your phone, and two people can't work on the same site. A hosted multi-user mode needs auth, roles, and conflict handling.
@@ -111,14 +133,17 @@ Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (sta
 ## Project layout
 
 ```
-main.go                 starts the server, opens the browser
-internal/store          SQLite: site settings, page tree, revisions, media, redirects
+main.go                 starts the editor, opens the browser
+cmd/website-server      the small server that ships inside self-hosting downloads
+tools/build             release build: compiles the servers, then Sitesmith
+internal/store          SQLite: site settings, page tree, versions, media, redirects
 internal/blocks         section schema, validation, sanitising
 internal/render         theme templates + CSS tokens; preview and static rendering
 internal/build          static build, redirects, sitemap, ZIP export
 internal/media          image processing (orientation, resizing, metadata stripping)
 internal/starter        onboarding starter sites
-internal/server         HTTP API, preview, local-only guard
+internal/server         HTTP API, preview, local-only guard, multiple sites
+internal/serverbin      the compiled website servers, embedded for export
 web/admin               the editor UI (vanilla JS modules, embedded in the binary)
 ```
 

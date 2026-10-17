@@ -1,3 +1,7 @@
 *.exe
 /sitesmith
 /site-data/
+# Built by `go run ./tools/build`, embedded into Sitesmith
+/internal/serverbin/bin/*
+!/internal/serverbin/bin/README.md
+/dist/
