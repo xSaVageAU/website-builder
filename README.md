@@ -1,0 +1,108 @@
+# Sitesmith
+
+A free, simple website builder. It runs as one program on your own computer and publishes plain static files that you can host anywhere, including on free hosts.
+
+**Status:** an MVP to find out what works and what needs more thought.
+
+## Run it
+
+```bash
+go run .
+```
+
+This opens the editor in your browser at http://127.0.0.1:4321. Everything lives in `./site-data/`:
+
+| Path | What |
+|---|---|
+| `site.db` | All content (SQLite). Back up the folder and you've backed up the site. |
+| `media/` | Uploaded images, resized |
+| `published/` | The last published site: plain HTML/CSS/images |
+
+Flags: `-data <folder>`, `-addr 127.0.0.1:4321`, `-no-browser`.
+
+Build a single binary with `go build -o sitesmith.exe .`. The admin UI and theme are embedded in it, so the binary has no other runtime dependencies.
+
+Run the tests with `go test ./...`.
+
+## How it works
+
+```
+Editor (Go server + SQLite + admin UI)  ──Publish──►  published/  (static files, no server code)
+```
+
+- **The editor app** (`internal/server`) has a JSON API, the admin UI (`web/admin`, plain JS modules, no build step) and a live preview at `/preview/…`. It only accepts connections from this computer.
+- **Publishing** (`internal/build`) renders every published page to `path/index.html` with **relative links**. That way the folder works on any host, including sub-paths like GitHub Pages project sites.
+- **The preview and the build share one renderer** (`internal/render`). They differ only in how URLs are written.
+
+### Design decisions worth knowing
+
+- **The page tree is the menu.** Top-level pages are menu items, and their children become dropdowns. Order in the sidebar is the menu order. "Show in menu" hides a page from the menu without unpublishing it.
+- **A draft hides its whole branch.** Subpages of a draft page aren't published either.
+- **Internal links are stored as `page:<id>`**, not as URLs, so renaming or moving a page never breaks a link. Publishing warns if a link points to a draft or deleted page.
+- **Redirects only for URLs the public actually saw.** Each publish records the live paths. If a page's URL later changes, the next publish writes a redirect from the old URL. Renaming a page five times before publishing creates no junk redirects.
+- **Sections, not pixels.** Users pick *what* (Hero, Columns, Gallery…). The theme decides *how it looks*. The block schema in `internal/blocks` is the single source of truth: the UI builds its forms from it, the API validates and sanitises against it, and the renderer resolves values with it. Adding a section type means one Go struct plus one template.
+- **The theme is design tokens.** Five font styles, three corner styles, two spacing options, light/dark, and any colour. Link colours are automatically darkened or lightened until they're readable, so every combination works.
+- **Starter content is coaching.** The onboarding wizard creates real pages whose placeholder text explains what to write.
+- **Image processing on upload:** photos are rotated upright (EXIF orientation), resized to 480/960/1600/2400 widths, re-encoded (which strips GPS metadata), and served with `srcset`.
+- **Autosave plus history.** Edits save about 0.6s after you stop typing. Each page keeps a snapshot roughly every 10 minutes of editing (50 kept), and restoring is non-destructive.
+
+## What's in the MVP
+
+- Onboarding wizard with 6 starter sites (business, portfolio, restaurant, organisation, personal, blank)
+- Page tree with drag-and-drop nesting and reordering, drafts, menu visibility, home page selection, duplicate, delete
+- 12 section types: hero, heading, text, image, columns, button, call to action, gallery, quote, video (YouTube/Vimeo, privacy-enhanced), subpage list, divider
+- Live preview that updates in place, with desktop and phone views. Clicking a section in the preview selects it in the editor, and clicking a link in the preview opens that page.
+- Design panel: logo, colour, fonts, corners, spacing, light/dark
+- Media library with upload, drag-and-drop, and a warning before deleting an image that's in use
+- Publish: build report with warnings, "View published site", "Download as ZIP", "Open folder", free hosting tips
+- SEO basics: per-page description, Open Graph tags, canonical URLs, sitemap.xml and robots.txt (when a website address is set), 404 page, breadcrumbs
+
+## Open questions: things that need more thinking
+
+**Publishing is the weakest step for non-technical users.** "Here's a folder, upload it somewhere" is still a hurdle. Options:
+1. One-click deploy integrations (Netlify / Cloudflare Pages / GitHub Pages APIs). This needs OAuth or tokens, and those are external accounts.
+2. A "Sitesmith host" mode: the same binary on a cheap VPS or Raspberry Pi serves the published folder. It's free software, but someone still pays for the box.
+3. A community-run free host. This is the closest to "free for everyone", but it's an ongoing cost and an abuse-handling problem.
+
+**Local app vs. hosted editor.** The editor currently runs on one computer, which is simple, private and free. But you can't edit from your phone, and two people can't work on the same site. A hosted multi-user mode needs auth, roles, and conflict handling.
+
+**Contact forms.** These are the most-requested dynamic feature, and a static site can't process forms on its own. Options: a `mailto:` button (works today via links), a third-party form service, or a small form endpoint in a self-hosted Sitesmith.
+
+**Blog / news posts.** The data model has room for a "collection" (dated pages with a listing and RSS), but the UX needs design: where posts live in the tree, and how listings paginate.
+
+**Navigation edge cases:**
+- The menu shows two levels. Deeper pages are reachable via breadcrumbs and subpage lists, but not from the menu. Is that the right limit?
+- The home page's subpages live under `/home/…`, and `/home/` redirects to `/`.
+- Desktop dropdowns open on hover/focus. On tablets with wide screens, tapping a parent item navigates instead of opening its dropdown.
+- Big menus (10+ top-level pages) wrap onto a second row.
+
+**Editor UX:**
+- Editing happens in forms beside the preview, not by typing directly on the page. Direct on-page editing would feel more like "what you see is what you get", but it's much more complex.
+- No global undo. There's undo for deleted sections, plus page history.
+- No "unpublished changes" indicator yet.
+- The editor UI is desktop-only. It hides the preview below 1100px.
+
+**Theme extensibility.** There's one built-in theme. Should more themes be token presets (which keeps everything compatible), or full template sets (more variety, but harder to keep every section type looking right)?
+
+**Images:**
+- No WebP/AVIF output yet. Go's standard library can't encode them without cgo or a WASM encoder.
+- Animated GIFs are kept as-is and not resized.
+- No focal point or crop control for hero and column images.
+
+**Builds** re-render everything. That's fine for hundreds of pages, but incremental builds would matter for big sites.
+
+**Accessibility review.** The basics are there: semantic HTML, a skip link, alt text fields, keyboard-reachable controls, contrast-checked link colours. The admin UI has had no screen-reader testing.
+
+## Project layout
+
+```
+main.go                 starts the server, opens the browser
+internal/store          SQLite: site settings, page tree, revisions, media, redirects
+internal/blocks         section schema, validation, sanitising
+internal/render         theme templates + CSS tokens; preview and static rendering
+internal/build          static build, redirects, sitemap, ZIP export
+internal/media          image processing (orientation, resizing, metadata stripping)
+internal/starter        onboarding starter sites
+internal/server         HTTP API, preview, local-only guard
+web/admin               the editor UI (vanilla JS modules, embedded in the binary)
+```

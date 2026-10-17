@@ -1,0 +1,255 @@
+{{define "page"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.DocTitle}}</title>
+{{- with .Description}}
+<meta name="description" content="{{.}}">{{end}}
+{{- with .Canonical}}
+<link rel="canonical" href="{{.}}">{{end}}
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{.Title}}">
+<meta property="og:site_name" content="{{.SiteName}}">
+{{- with .Description}}
+<meta property="og:description" content="{{.}}">{{end}}
+{{- with .OGImage}}
+<meta property="og:image" content="{{.}}">{{end}}
+{{- if .NoIndex}}
+<meta name="robots" content="noindex">{{end}}
+<link rel="stylesheet" href="{{.CSSHref}}">
+</head>
+<body{{if .IsHome}} class="is-home"{{end}}>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="{{.HomeHref}}">{{if .Logo}}<img src="{{.Logo.Src}}" alt="{{.SiteName}}" width="{{.Logo.Width}}" height="{{.Logo.Height}}">{{else}}{{.SiteName}}{{end}}</a>
+    {{- if .Nav}}
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <label for="nav-toggle" class="nav-button">Menu</label>
+    <nav class="site-nav" aria-label="Main">
+      <ul>
+        {{- range .Nav}}
+        <li class="{{if .Active}}active{{end}}{{if .Children}} has-children{{end}}"><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a>
+          {{- if .Children}}
+          <ul>
+            {{- range .Children}}
+            <li class="{{if .Active}}active{{end}}"><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a></li>
+            {{- end}}
+          </ul>
+          {{- end}}
+        </li>
+        {{- end}}
+      </ul>
+    </nav>
+    {{- end}}
+  </div>
+</header>
+<main id="main">
+{{- if .Crumbs}}
+<nav class="crumbs wrap" aria-label="Breadcrumb"><ol>
+  {{- range .Crumbs}}<li>{{if .Href}}<a href="{{.Href}}">{{.Title}}</a>{{else}}<span aria-current="page">{{.Title}}</span>{{end}}</li>{{end -}}
+</ol></nav>
+{{- end}}
+{{- if .ShowTitle}}
+<header class="page-head narrow"><h1>{{.Title}}</h1></header>
+{{- end}}
+{{- range .Blocks}}
+{{template "block" .}}
+{{- end}}
+{{- if and .Preview (not .Blocks)}}
+<section class="b"><div class="narrow placeholder">This page is empty. Add a section from the editor on the left.</div></section>
+{{- end}}
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    {{- with .FooterText}}<p>{{.}}</p>{{end}}
+    <p>&copy; {{.Year}} {{.SiteName}}</p>
+  </div>
+</footer>
+{{- if .Preview}}
+<script>{{template "preview-script"}}</script>
+{{- end}}
+</body>
+</html>
+{{end}}
+
+{{define "block"}}
+{{- if eq .Type "hero"}}{{template "b-hero" .}}
+{{- else if eq .Type "heading"}}{{template "b-heading" .}}
+{{- else if eq .Type "text"}}{{template "b-text" .}}
+{{- else if eq .Type "image"}}{{template "b-image" .}}
+{{- else if eq .Type "columns"}}{{template "b-columns" .}}
+{{- else if eq .Type "button"}}{{template "b-button" .}}
+{{- else if eq .Type "cta"}}{{template "b-cta" .}}
+{{- else if eq .Type "gallery"}}{{template "b-gallery" .}}
+{{- else if eq .Type "quote"}}{{template "b-quote" .}}
+{{- else if eq .Type "video"}}{{template "b-video" .}}
+{{- else if eq .Type "subpages"}}{{template "b-subpages" .}}
+{{- else if eq .Type "divider"}}{{template "b-divider" .}}
+{{- end}}
+{{- end}}
+
+{{define "attrs"}}{{if .Preview}} data-block="{{.ID}}"{{end}}{{end}}
+
+{{define "b-hero"}}
+<section class="b b-hero align-{{.D.align}}{{if .D.image}} has-image{{end}}"{{template "attrs" .}}>
+  {{- with .D.image}}
+  <img class="hero-bg" src="{{.Src}}" srcset="{{.Srcset}}" sizes="100vw" alt="" width="{{.Width}}" height="{{.Height}}">
+  {{- end}}
+  <div class="wrap hero-inner">
+    {{if .First}}<h1>{{.D.heading}}</h1>{{else}}<h2>{{.D.heading}}</h2>{{end}}
+    {{- with .D.text}}
+    <p class="lead">{{.}}</p>{{end}}
+    {{- if .D.buttonLabel}}
+    <a class="btn" href="{{or .D.buttonLink "#"}}">{{.D.buttonLabel}}</a>{{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "b-heading"}}
+<section class="b b-heading"{{template "attrs" .}}>
+  <div class="narrow align-{{.D.align}}">{{if eq .D.level "3"}}<h3>{{.D.text}}</h3>{{else}}<h2>{{.D.text}}</h2>{{end}}</div>
+</section>
+{{end}}
+
+{{define "b-text"}}
+{{- if .D.html}}
+<section class="b b-text"{{template "attrs" .}}>
+  <div class="narrow prose">{{.D.html}}</div>
+</section>
+{{- else if .Preview}}
+<section class="b b-text"{{template "attrs" .}}><div class="narrow placeholder">Empty text section</div></section>
+{{- end}}
+{{end}}
+
+{{define "b-image"}}
+<section class="b b-image width-{{.D.width}}"{{template "attrs" .}}>
+  <figure class="{{if eq .D.width "normal"}}narrow{{else if eq .D.width "wide"}}wrap{{end}}">
+  {{- with .D.image}}
+    <img src="{{.Src}}" srcset="{{.Srcset}}" sizes="{{if eq $.D.width "full"}}100vw{{else if eq $.D.width "wide"}}(min-width: 76rem) 72rem, 100vw{{else}}(min-width: 48rem) 44rem, 100vw{{end}}" alt="{{$.D.alt}}" width="{{.Width}}" height="{{.Height}}" loading="lazy" decoding="async">
+  {{- else}}{{if .Preview}}<div class="placeholder">Choose an image in the editor</div>{{end}}
+  {{- end}}
+  {{- with .D.caption}}
+    <figcaption>{{.}}</figcaption>{{end}}
+  </figure>
+</section>
+{{end}}
+
+{{define "b-columns"}}
+<section class="b b-columns"{{template "attrs" .}}>
+  <div class="wrap cols cols-{{len .D.items}}">
+    {{- range .D.items}}
+    <div class="col">
+      {{- with .image}}
+      <img src="{{.Src}}" srcset="{{.Srcset}}" sizes="(min-width: 60rem) 24rem, (min-width: 36rem) 50vw, 100vw" alt="" width="{{.Width}}" height="{{.Height}}" loading="lazy" decoding="async">{{end}}
+      {{- with .heading}}
+      <h3>{{.}}</h3>{{end}}
+      {{- with .html}}
+      <div class="prose">{{.}}</div>{{end}}
+      {{- if and .link .linkLabel}}
+      <a class="more" href="{{.link}}">{{.linkLabel}} &rarr;</a>{{end}}
+    </div>
+    {{- end}}
+  </div>
+</section>
+{{end}}
+
+{{define "b-button"}}
+<section class="b b-button align-{{.D.align}}"{{template "attrs" .}}>
+  <div class="narrow"><a class="btn{{if eq .D.style "secondary"}} btn-secondary{{end}}" href="{{or .D.link "#"}}">{{.D.label}}</a></div>
+</section>
+{{end}}
+
+{{define "b-cta"}}
+<section class="b b-cta"{{template "attrs" .}}>
+  <div class="wrap"><div class="cta-box">
+    <h2>{{.D.heading}}</h2>
+    {{- with .D.text}}
+    <p>{{.}}</p>{{end}}
+    {{- if .D.buttonLabel}}
+    <a class="btn" href="{{or .D.buttonLink "#"}}">{{.D.buttonLabel}}</a>{{end}}
+  </div></div>
+</section>
+{{end}}
+
+{{define "b-gallery"}}
+<section class="b b-gallery"{{template "attrs" .}}>
+  <div class="wrap">
+  {{- if .D.items}}
+    <div class="gallery gallery-{{.D.columns}}">
+    {{- range .D.items}}{{if .image}}
+      <a href="{{.image.Full}}"><img src="{{.image.Src}}" srcset="{{.image.Srcset}}" sizes="(min-width: 60rem) 24rem, 50vw" alt="{{.alt}}" width="{{.image.Width}}" height="{{.image.Height}}" loading="lazy" decoding="async"></a>
+    {{- end}}{{end}}
+    </div>
+  {{- else if .Preview}}<div class="placeholder">Add photos to this gallery in the editor</div>{{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "b-quote"}}
+<section class="b b-quote"{{template "attrs" .}}>
+  <div class="narrow"><blockquote><p>{{.D.text}}</p>{{with .D.cite}}<cite>&mdash; {{.}}</cite>{{end}}</blockquote></div>
+</section>
+{{end}}
+
+{{define "b-video"}}
+{{- if .D.embed}}
+<section class="b b-video"{{template "attrs" .}}>
+  <figure class="wrap"><div class="video"><iframe src="{{.D.embed}}" title="{{or .D.caption "Video"}}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
+  {{- with .D.caption}}<figcaption>{{.}}</figcaption>{{end}}</figure>
+</section>
+{{- else if .Preview}}
+<section class="b b-video"{{template "attrs" .}}><div class="wrap placeholder">Paste a YouTube or Vimeo address in the editor</div></section>
+{{- end}}
+{{end}}
+
+{{define "b-subpages"}}
+{{- if .D.pages}}
+<section class="b b-subpages"{{template "attrs" .}}>
+  <div class="wrap">
+  {{- if eq .D.style "list"}}
+    <ul class="subpages-list">{{range .D.pages}}<li><a href="{{.Href}}">{{.Title}}</a></li>{{end}}</ul>
+  {{- else}}
+    <div class="subpages-cards">
+    {{- range .D.pages}}
+      <a class="subpage-card" href="{{.Href}}"><strong>{{.Title}}</strong>{{with .Description}}<span>{{.}}</span>{{end}}</a>
+    {{- end}}
+    </div>
+  {{- end}}
+  </div>
+</section>
+{{- else if .Preview}}
+<section class="b b-subpages"{{template "attrs" .}}><div class="wrap placeholder">No subpages yet. Drag pages underneath this one in the sidebar and they'll be listed here.</div></section>
+{{- end}}
+{{end}}
+
+{{define "b-divider"}}
+<section class="b b-divider"{{template "attrs" .}}><div class="wrap"><hr></div></section>
+{{end}}
+
+{{define "preview-script"}}
+(function () {
+  // Talks to the editor: clicking a section selects it there, and the editor
+  // can ask us to scroll a section into view.
+  var sel = null;
+  function mark(el) {
+    if (sel) sel.style.outline = "";
+    sel = el;
+    if (el) { el.style.outline = "2px solid #4c6ef5"; el.style.outlineOffset = "-2px"; }
+  }
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-block]");
+    var a = e.target.closest("a[href]");
+    if (a && a.origin !== location.origin) { e.preventDefault(); return; }
+    if (b && !a) { mark(b); parent.postMessage({ type: "select-block", id: b.getAttribute("data-block") }, "*"); }
+  });
+  window.addEventListener("message", function (e) {
+    if (!e.data || e.data.type !== "show-block") return;
+    var el = document.querySelector('[data-block="' + e.data.id + '"]');
+    if (!el) return;
+    mark(el);
+    if (e.data.scroll !== false) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+})();
+{{end}}

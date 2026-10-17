@@ -1,0 +1,151 @@
+package build
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"sitesmith/internal/render"
+	"sitesmith/internal/starter"
+	"sitesmith/internal/store"
+)
+
+func setup(t *testing.T, kind string) (*store.Store, *Builder) {
+	t.Helper()
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "site.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	r, err := render.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, _ := starter.Find(kind)
+	site := store.DefaultSite()
+	site.Name = "Test Co"
+	if err := starter.Apply(st, k, site); err != nil {
+		t.Fatal(err)
+	}
+	return st, &Builder{Store: st, Renderer: r, MediaDir: filepath.Join(dir, "media"), OutDir: filepath.Join(dir, "out")}
+}
+
+func read(t *testing.T, b *Builder, rel string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(b.OutDir, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatalf("missing %s: %v", rel, err)
+	}
+	return string(data)
+}
+
+func TestStarterSitesBuild(t *testing.T) {
+	for _, k := range starter.Kinds {
+		t.Run(k.ID, func(t *testing.T) {
+			_, b := setup(t, k.ID)
+			rep, err := b.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Pages == 0 {
+				t.Fatal("no pages built")
+			}
+			if len(rep.Warnings) > 0 {
+				t.Errorf("unexpected warnings: %v", rep.Warnings)
+			}
+			read(t, b, "index.html")
+			read(t, b, "404.html")
+			read(t, b, "assets/site.css")
+		})
+	}
+}
+
+func TestRelativeLinksAndNav(t *testing.T) {
+	_, b := setup(t, "business")
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	home := read(t, b, "index.html")
+	for _, want := range []string{`href="services/"`, `href="contact/"`, `href="assets/site.css?v=`, "<h1>"} {
+		if !strings.Contains(home, want) {
+			t.Errorf("home page missing %q", want)
+		}
+	}
+	sub := read(t, b, "services/first-service/index.html")
+	for _, want := range []string{`href="../../contact/"`, `aria-label="Breadcrumb"`, `href="../../assets/site.css`} {
+		if !strings.Contains(sub, want) {
+			t.Errorf("subpage missing %q", want)
+		}
+	}
+	// The services page lists its children automatically.
+	if svc := read(t, b, "services/index.html"); !strings.Contains(svc, `href="../services/first-service/"`) {
+		t.Error("subpage list missing child link")
+	}
+}
+
+func TestRenameCreatesRedirectOnlyAfterPublish(t *testing.T) {
+	st, b := setup(t, "business")
+	tree, _ := st.Tree()
+	var about *store.Page
+	for _, p := range tree.Pages {
+		if p.Slug == "about" {
+			about = p
+		}
+	}
+
+	// Renaming before the first publish: no redirect, nobody saw the old URL.
+	slug := "about-us"
+	if _, err := st.UpdatePage(about.ID, store.PageUpdate{Slug: &slug}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Redirects != 1 { // only /home/ -> /
+		t.Fatalf("redirects = %d, want 1", rep.Redirects)
+	}
+
+	// Renaming a published page: the old URL forwards to the new one.
+	slug = "our-story"
+	if _, err := st.UpdatePage(about.ID, store.PageUpdate{Slug: &slug}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	if r := read(t, b, "about-us/index.html"); !strings.Contains(r, `url=../our-story/`) {
+		t.Errorf("redirect page wrong: %s", r)
+	}
+}
+
+func TestDraftHidesBranch(t *testing.T) {
+	st, b := setup(t, "business")
+	tree, _ := st.Tree()
+	var services *store.Page
+	for _, p := range tree.Pages {
+		if p.Slug == "services" {
+			services = p
+		}
+	}
+	off := false
+	if _, err := st.UpdatePage(services.ID, store.PageUpdate{Published: &off}); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(b.OutDir, "services", "first-service", "index.html")); err == nil {
+		t.Error("subpage of a draft was published")
+	}
+	if strings.Contains(read(t, b, "index.html"), `href="services/"`) {
+		t.Error("draft page still in the menu")
+	}
+	// Home links to the draft page, which should be reported.
+	if len(rep.Warnings) == 0 {
+		t.Error("expected a warning about links to the draft page")
+	}
+}
