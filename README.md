@@ -106,3 +106,7 @@ internal/starter        onboarding starter sites
 internal/server         HTTP API, preview, local-only guard
 web/admin               the editor UI (vanilla JS modules, embedded in the binary)
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE). Free to use, change and share, including commercially.
