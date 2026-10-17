@@ -52,6 +52,8 @@ type Type struct {
 	Description string  `json:"description"`
 	Icon        string  `json:"icon"`
 	Fields      []Field `json:"fields"`
+	// Hidden types are never offered in the section picker.
+	Hidden bool `json:"hidden,omitempty"`
 	// Style lists the keys of StyleFields this section type offers.
 	Style []string `json:"style"`
 }
@@ -93,6 +95,7 @@ var (
 		"cta":     {"spaceTop", "spaceBottom", "height", "background", "width"},
 		"image":   {"spaceTop", "spaceBottom", "background"}, // has its own width choice
 		"divider": {"spaceTop", "spaceBottom", "width"},
+		"shared":  {}, // styled through the reusable section itself
 	}
 )
 
@@ -249,6 +252,38 @@ var Types = []Type{
 	{
 		Type: "divider", Label: "Divider", Icon: "divider",
 		Description: "A thin line to separate parts of a page.",
+	},
+	{
+		Type: "faq", Label: "FAQ", Icon: "faq",
+		Description: "Questions visitors can click to see the answer.",
+		Fields: []Field{
+			{Key: "items", Kind: "list", Label: "Questions", ItemLabel: "Question", Min: 1, Max: 40,
+				Default: []any{
+					map[string]any{"question": "A question visitors often ask?", "answer": "<p>A short, helpful answer.</p>"},
+					map[string]any{"question": "Another common question?", "answer": "<p>Answer it here, so people don't have to get in touch.</p>"},
+				},
+				Fields: []Field{
+					{Key: "question", Kind: "text", Label: "Question"},
+					{Key: "answer", Kind: "rich", Label: "Answer"},
+				}},
+		},
+	},
+	{
+		Type: "contact", Label: "Contact details", Icon: "pin",
+		Description: "Address, phone, email and opening hours, with an optional map.",
+		Fields: []Field{
+			{Key: "address", Kind: "textarea", Label: "Address", Placeholder: "123 Example Street\nYour Town"},
+			{Key: "phone", Kind: "text", Label: "Phone", Placeholder: "+1 555 0100"},
+			{Key: "email", Kind: "text", Label: "Email", Placeholder: "hello@example.com"},
+			{Key: "hours", Kind: "textarea", Label: "Opening hours", Placeholder: "Mon–Fri 9:00–17:00"},
+			{Key: "map", Kind: "toggle", Label: "Show a map of the address",
+				Help: "Uses Google Maps, which loads from Google when someone views the page."},
+		},
+	},
+	{
+		// A placeholder for a reusable section: renders the shared section it points to.
+		Type: "shared", Label: "Reusable section", Icon: "link", Hidden: true,
+		Fields: []Field{{Key: "ref", Kind: "text", Label: "Reusable section"}},
 	},
 	{
 		Type: "html", Label: "Custom HTML", Icon: "code",
@@ -451,4 +486,23 @@ func normalizeValue(f Field, v any) any {
 		return out
 	}
 	return nil
+}
+
+// NormalizeOne validates a single section, as stored in the reusable-section
+// library. A reusable section can't itself be a reference to another.
+func NormalizeOne(raw json.RawMessage) (json.RawMessage, error) {
+	clean, err := Normalize(json.RawMessage("[" + string(raw) + "]"))
+	if err != nil {
+		return nil, err
+	}
+	var list []json.RawMessage
+	if err := json.Unmarshal(clean, &list); err != nil || len(list) != 1 {
+		return nil, fmt.Errorf("blocks: expected one valid section")
+	}
+	var b Block
+	_ = json.Unmarshal(list[0], &b)
+	if b.Type == "shared" {
+		return nil, fmt.Errorf("blocks: a reusable section can't contain another")
+	}
+	return list[0], nil
 }

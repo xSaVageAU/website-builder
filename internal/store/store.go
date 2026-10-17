@@ -69,6 +69,14 @@ CREATE TABLE IF NOT EXISTS redirects (
 	page_id   INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE
 );
 
+-- Reusable sections: placed on pages by "shared" blocks that point here.
+CREATE TABLE IF NOT EXISTS shared_blocks (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	block      TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS media (
 	id            INTEGER PRIMARY KEY,
 	name          TEXT    NOT NULL UNIQUE,

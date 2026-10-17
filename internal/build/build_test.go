@@ -334,3 +334,38 @@ func TestCustomCSSAndHTML(t *testing.T) {
 		t.Error("preview runs custom HTML outside the sandbox")
 	}
 }
+
+func TestFAQContactAndReusable(t *testing.T) {
+	st, b := setup(t, "blank")
+	tree, _ := st.Tree()
+	home := tree.Pages[0]
+	sh, err := st.CreateShared("Promo", json.RawMessage(`{"id":"inner","type":"quote","data":{"text":"Shared words"},"css":"color: teal;"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := json.RawMessage(`[
+		{"id":"q","type":"faq","data":{"items":[{"question":"Open on Sunday?","answer":"<p>Yes, 10–4.</p>"}]}},
+		{"id":"c","type":"contact","data":{"address":"1 Main St\nTown","phone":"+1 (555) 0100","email":"hi@example.com","map":true}},
+		{"id":"ref1","type":"shared","data":{"ref":"` + sh.ID + `"}},
+		{"id":"gone","type":"shared","data":{"ref":"rdeleted"}}]`)
+	if _, err := st.UpdatePage(home.ID, store.PageUpdate{Blocks: &blocks}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Build(); err != nil {
+		t.Fatal(err)
+	}
+	html := read(t, b, "index.html")
+	for _, want := range []string{
+		"<summary>Open on Sunday?</summary>", "<p>Yes, 10–4.</p>",
+		`href="tel:&#43;15550100"`, `href="mailto:hi@example.com"`,
+		`src="https://maps.google.com/maps?q=1&#43;Main&#43;St&#43;Town&amp;output=embed"`,
+		"Shared words", ".s-inner {", // reusable content and its own CSS
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	if strings.Contains(html, "was deleted") {
+		t.Error("the editor-only hint for a deleted reusable section reached the published site")
+	}
+}

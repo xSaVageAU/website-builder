@@ -60,6 +60,7 @@ app.saver = (() => {
 
   async function flush() {
     clearTimeout(timer);
+    await flushShared();
     while (running) await running;
     if (!pending.size) return;
     running = run();
@@ -75,12 +76,56 @@ app.saver = (() => {
       timer = setTimeout(flush, 600);
     },
     flush,
-    busy: () => pending.size > 0 || running != null,
+    busy: () => pending.size > 0 || running != null || sharedTimers.size > 0,
   };
 })();
 
+// ---------- reusable sections ----------
+// They live in the site's library, not on a page, so they save on their own:
+// shortly after typing stops, and before anything that needs everything saved.
+
+app.shared = [];
+// Updates names and usage counts in place. A section's content is never
+// replaced here: open cards edit the very objects they were given (down to
+// nested lists), and only this editor changes them. Restores and deletes,
+// which do change content on the server, reload the page instead.
+app.refreshShared = async () => {
+  const fresh = await api.shared();
+  const byId = new Map(app.shared.map((sh) => [sh.id, sh]));
+  app.shared = fresh.map((f) => {
+    const cur = byId.get(f.id);
+    if (!cur) return f;
+    cur.name = f.name;
+    cur.uses = f.uses;
+    return cur;
+  });
+};
+
+const sharedTimers = new Map(); // id -> { timer, run }
+async function saveSharedNow(sh) {
+  sharedTimers.delete(sh.id);
+  try {
+    setStatus('saving');
+    await api.updateShared(sh.id, { block: sh.block });
+    setStatus('saved');
+    refreshAfterSave();
+  } catch (e) {
+    setStatus('error', e.message);
+  }
+}
+app.saveShared = (sh) => {
+  setStatus('dirty');
+  clearTimeout(sharedTimers.get(sh.id)?.timer);
+  sharedTimers.set(sh.id, { timer: setTimeout(() => saveSharedNow(sh), 600), run: () => saveSharedNow(sh) });
+};
+async function flushShared() {
+  const jobs = [...sharedTimers.values()];
+  for (const j of jobs) clearTimeout(j.timer);
+  await Promise.all(jobs.map((j) => j.run()));
+}
+
 const refreshAfterSave = debounce(async () => {
-  await app.refreshTree();
+  await Promise.all([app.refreshTree(), app.refreshShared()]);
   app.preview.refresh();
 }, 150);
 
@@ -471,6 +516,7 @@ async function start() {
     app.site = await api.site();
   }
   await loadMedia();
+  await app.refreshShared();
   layout();
   app.renderTopbar();
   renderSideNav();

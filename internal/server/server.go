@@ -93,6 +93,11 @@ func (s *Server) Handler() http.Handler {
 	edit("POST /api/pages/{id}/duplicate", s.duplicatePage)
 	site("POST /api/pages/{id}/discard", s.discardPage)
 
+	site("GET /api/shared", s.listShared)
+	edit("POST /api/shared", s.createShared)
+	edit("PUT /api/shared/{id}", s.updateShared)
+	edit("DELETE /api/shared/{id}", s.deleteShared)
+
 	site("GET /api/versions", s.versions)
 	site("POST /api/versions", s.saveVersion)
 	site("POST /api/versions/{id}/restore", s.restoreVersion)
@@ -458,6 +463,71 @@ func (s *Server) discardPage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, p)
 }
 
+// ---------- reusable sections ----------
+
+func (s *Server) listShared(w http.ResponseWriter, r *http.Request) {
+	list, err := s.c().st.SharedBlocks()
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, list)
+}
+
+func (s *Server) createShared(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name  string          `json:"name"`
+		Block json.RawMessage `json:"block"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		fail(w, 400, "Invalid request.")
+		return
+	}
+	block, err := blocks.NormalizeOne(req.Block)
+	if err != nil {
+		fail(w, 400, "That section can't be made reusable.")
+		return
+	}
+	sh, err := s.c().st.CreateShared(req.Name, block)
+	if err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 201, sh)
+}
+
+func (s *Server) updateShared(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name  *string          `json:"name"`
+		Block *json.RawMessage `json:"block"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		fail(w, 400, "Invalid request.")
+		return
+	}
+	if req.Block != nil {
+		clean, err := blocks.NormalizeOne(*req.Block)
+		if err != nil {
+			fail(w, 400, "Invalid section.")
+			return
+		}
+		req.Block = &clean
+	}
+	if err := s.c().st.UpdateShared(r.PathValue("id"), req.Name, req.Block); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) deleteShared(w http.ResponseWriter, r *http.Request) {
+	if err := s.c().st.DeleteShared(r.PathValue("id")); err != nil {
+		s.failErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
 // ---------- versions ----------
 
 // Snapshot often enough that any moment is within a few minutes of a version.
@@ -633,6 +703,17 @@ func (s *Server) mediaUsage(id int64) ([]string, error) {
 			if usesImage(bt.Fields, b.Data, id) {
 				used = append(used, p.Title)
 				break
+			}
+		}
+	}
+	shared, err := s.c().st.SharedBlocks()
+	if err != nil {
+		return nil, err
+	}
+	for _, sh := range shared {
+		for _, b := range blocks.Parse(json.RawMessage("[" + string(sh.Block) + "]")) {
+			if bt, ok := blocks.Lookup(b.Type); ok && usesImage(bt.Fields, b.Data, id) {
+				used = append(used, "Reusable section: "+sh.Name)
 			}
 		}
 	}

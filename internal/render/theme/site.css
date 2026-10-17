@@ -247,6 +247,25 @@ p { margin: 0 0 1em; }
 
 .b-divider hr { border: 0; border-top: 1px solid var(--border); margin: 0; }
 
+.faq details { border-bottom: 1px solid var(--border); }
+.faq details:first-child { border-top: 1px solid var(--border); }
+.faq summary { cursor: pointer; list-style: none; padding: 1.05rem 2.2rem 1.05rem 0; font-weight: 600; font-family: var(--font-head); font-size: 1.1rem; position: relative; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); font-size: 1.4rem; font-weight: 400; color: var(--link); transition: transform 0.2s; }
+.faq details[open] summary::after { transform: translateY(-50%) rotate(45deg); }
+.faq .prose { padding: 0 0 1.1rem; color: var(--muted); }
+
+.contact { display: grid; gap: 2rem; }
+.contact.has-map { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: start; }
+@media (max-width: 48rem) { .contact.has-map { grid-template-columns: 1fr; } }
+.contact-list { margin: 0; display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.contact.has-map .contact-list { grid-template-columns: 1fr; }
+.contact-list dt { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.25rem; }
+.contact-list dd { margin: 0; white-space: pre-line; }
+.contact-list .more { display: inline-block; margin-top: 0.35rem; font-weight: 600; font-size: 0.95rem; }
+.map { border-radius: var(--radius); overflow: hidden; aspect-ratio: 4 / 3; background: var(--surface); }
+.map iframe { width: 100%; height: 100%; border: 0; display: block; }
+
 /* ---------- Section style choices ----------
    Classes come from each section's Style drawer. They sit after the block
    styles above so they win at equal specificity. */

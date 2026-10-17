@@ -1,6 +1,6 @@
 // The page editor: page settings at the top, then the list of sections.
 import { api } from './api.js';
-import { h, icon, iconButton, modal, toast, slugify, uid, clone } from './ui.js';
+import { h, icon, iconButton, modal, confirmDialog, toast, slugify, uid, clone } from './ui.js';
 import { renderFields, defaultsFor, toggle, codeArea } from './fields.js';
 import { askGoBack } from './versions.js';
 
@@ -92,19 +92,46 @@ export function mountPageEditor(root, page, app) {
     h('button', { type: 'button', class: 'inserter-btn', title: 'Add a section here', onClick: () => pickBlock(index) }, icon('plus')));
 
   const card = (b, i) => {
-    const t = types[b.type];
+    // A reusable section's card edits the library copy, so every page using it changes.
+    const isRef = b.type === 'shared';
+    const shared = isRef ? (app.shared || []).find((s) => s.id === b.data?.ref) : null;
+    const inner = shared ? shared.block : b;
+    const t = types[inner.type] || types[b.type];
+    const onInner = shared ? () => app.saveShared(shared) : save;
     const isCollapsed = collapsed.has(b.id);
     const move = (to) => { blocks.splice(to, 0, blocks.splice(i, 1)[0]); renderBlocks(); save(); };
-    const el = h('div', { class: 'block-card' + (selected === b.id ? ' selected' : '') + (isCollapsed ? ' collapsed' : ''), 'data-id': b.id,
+
+    let body;
+    if (isRef && !shared) {
+      body = h('p', { class: 'muted' }, 'This reusable section was deleted from your library. Remove it from this page.');
+    } else {
+      body = [
+        shared ? h('div', { class: 'shared-banner' },
+          h('span', {}, shared.uses > 1 ? `Used on ${shared.uses} pages. Changes here update all of them.` : 'Changes here update every page that uses it.'),
+          h('span', { class: 'spacer' }),
+          h('button', { type: 'button', class: 'link-btn', onClick: () => renameShared(shared) }, 'Rename'),
+          h('button', { type: 'button', class: 'link-btn', title: 'Turn this into a normal section that only belongs to this page',
+            onClick: () => { blocks[i] = { ...clone(shared.block), id: uid() }; renderBlocks(); save(); app.refreshShared(); toast('Detached: this copy now only belongs to this page'); } }, 'Detach')) : null,
+        t.fields?.length ? renderFields(t.fields, inner.data, { ...ctx, onChange: onInner }) : h('p', { class: 'muted' }, t.description),
+        inner.type === 'subpages' ? h('p', { class: 'field-help' },
+          "Each card shows a subpage's title and the Summary at the top of that page.") : null,
+        styleDrawer(inner, t, onInner),
+      ];
+    }
+
+    const el = h('div', { class: 'block-card' + (selected === b.id ? ' selected' : '') + (isCollapsed ? ' collapsed' : '') + (isRef ? ' reusable' : ''), 'data-id': b.id,
       onFocusin: () => select(b.id, true), onClick: () => select(b.id, true) },
       h('div', { class: 'block-head' },
         h('button', { type: 'button', class: 'block-toggle', 'aria-expanded': String(!isCollapsed),
           onClick: (e) => { e.stopPropagation(); isCollapsed ? collapsed.delete(b.id) : collapsed.add(b.id); renderBlocks(); } },
-          icon('chevron', 'chev'), icon(t.icon), h('span', { class: 'block-label' }, t.label),
-          isCollapsed ? h('span', { class: 'block-summary' }, summary(b)) : null),
+          icon('chevron', 'chev'), icon(isRef ? 'link' : t.icon),
+          h('span', { class: 'block-label' }, shared ? shared.name : t.label),
+          isRef ? h('span', { class: 'badge reuse' }, 'Reusable') : null,
+          isCollapsed && !isRef ? h('span', { class: 'block-summary' }, summary(b)) : null),
         h('span', { class: 'spacer' }),
         i > 0 ? iconButton('up', 'Move up', () => move(i - 1)) : null,
         i < blocks.length - 1 ? iconButton('down', 'Move down', () => move(i + 1)) : null,
+        isRef ? null : iconButton('link', 'Make reusable', () => makeReusable(b, i)),
         iconButton('copy', 'Duplicate', () => {
           const copy = { ...clone(b), id: uid() };
           blocks.splice(i + 1, 0, copy);
@@ -112,28 +139,63 @@ export function mountPageEditor(root, page, app) {
           renderBlocks();
           save();
         }),
-        iconButton('trash', 'Delete section', () => {
+        iconButton('trash', isRef ? 'Remove from this page' : 'Delete section', () => {
           blocks.splice(i, 1);
           renderBlocks();
           save();
-          toast(`${t.label} section deleted`, 'info', {
+          toast(isRef ? 'Removed from this page (still in your library)' : `${t.label} section deleted`, 'info', {
             label: 'Undo',
             onClick: () => { blocks.splice(Math.min(i, blocks.length), 0, b); renderBlocks(); save(); },
           });
         }, 'danger')),
-      isCollapsed ? null : h('div', { class: 'block-body' },
-        t.fields?.length ? renderFields(t.fields, b.data, ctx) : h('p', { class: 'muted' }, t.description),
-        b.type === 'subpages' ? h('p', { class: 'field-help' },
-          "Each card shows a subpage's title and the Summary at the top of that page.") : null,
-        styleDrawer(b, t)));
+      isCollapsed ? null : h('div', { class: 'block-body' }, body));
     return el;
+  };
+
+  // Ask for a name, then move the section into the library and leave a
+  // reference to it here.
+  const askName = (title, intro, value, okLabel) => new Promise((resolve) => {
+    let name = value;
+    let ok = false;
+    modal({
+      title,
+      body: h('div', {}, intro ? h('p', { class: 'muted' }, intro) : null,
+        h('input', { class: 'input', value, autofocus: true, maxlength: 80, onInput: (e) => { name = e.target.value; } })),
+      actions: [{ label: 'Cancel' }, { label: okLabel, kind: 'primary', onClick: () => { ok = true; } }],
+      onClose: () => resolve(ok ? name : null),
+    });
+  });
+
+  const makeReusable = async (b, i) => {
+    const name = await askName('Make this section reusable',
+      'It moves into your library of reusable sections. Add it to other pages from "Add a section". Editing it anywhere updates every page that uses it.',
+      summary(b) || types[b.type].label, 'Make reusable');
+    if (name == null) return;
+    try {
+      const sh = await api.createShared(name, b);
+      app.shared = [...(app.shared || []), { ...sh, uses: 1 }];
+      blocks[i] = { id: b.id, type: 'shared', data: { ref: sh.id } };
+      renderBlocks();
+      save();
+      toast(`"${sh.name}" is now reusable`);
+    } catch (e) { toast(e.message, 'error'); }
+  };
+
+  const renameShared = async (sh) => {
+    const name = await askName('Rename reusable section', '', sh.name, 'Rename');
+    if (name == null) return;
+    try {
+      await api.updateShared(sh.id, { name });
+      sh.name = name.trim() || sh.name;
+      renderBlocks();
+    } catch (e) { toast(e.message, 'error'); }
   };
 
   // Fine-tuning for one section: spacing, height, background, width. Every
   // control starts at "Auto", which is whatever the theme does.
   const styleFields = Object.fromEntries((schema.styleFields || []).map((f) => [f.key, f]));
   const styleOpen = new Set();
-  const styleDrawer = (b, t) => {
+  const styleDrawer = (b, t, save) => {
     const fields = (t.style || []).map((k) => styleFields[k]).filter(Boolean);
     if (!fields.length) return null;
     b.style ||= {};
@@ -179,25 +241,54 @@ export function mountPageEditor(root, page, app) {
   };
 
   const pickBlock = (index) => {
+    const insert = (b) => {
+      blocks.splice(index, 0, b);
+      selected = b.id;
+      dlg.close();
+      renderBlocks();
+      save();
+      requestAnimationFrame(() => {
+        const el = list.querySelector(`[data-id="${b.id}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el?.querySelector('input, textarea, [contenteditable]')?.focus();
+      });
+    };
+    const removeShared = async (sh) => {
+      const ok = await confirmDialog(
+        sh.uses ? `"${sh.name}" is used on ${sh.uses} page${sh.uses > 1 ? 's' : ''}. Each of those pages keeps its own copy, which you can then edit separately.`
+          : `"${sh.name}" isn't used on any page.`,
+        { okLabel: 'Delete', danger: true, title: 'Delete reusable section?' });
+      if (!ok) return;
+      dlg.close();
+      await app.saver.flush();
+      try {
+        await api.deleteShared(sh.id);
+        await app.refreshShared();
+        toast('Reusable section deleted');
+        app.openPage(page.id, { reload: true }); // pages that used it now hold copies
+      } catch (e) { toast(e.message, 'error'); }
+    };
+    const reusable = app.shared || [];
+    const option = (iconName, title, desc, onClick, extra = null) =>
+      h('div', { class: 'block-option-wrap' },
+        h('button', { type: 'button', class: 'block-option', onClick },
+          h('span', { class: 'block-option-icon' }, icon(iconName)),
+          h('span', {}, h('strong', {}, title), h('small', {}, desc))),
+        extra);
     const dlg = modal({
       title: 'Add a section',
       wide: true,
-      body: h('div', { class: 'block-picker' }, schema.blocks.map((t) =>
-        h('button', { type: 'button', class: 'block-option', onClick: () => {
-          const b = { id: uid(), type: t.type, data: defaultsFor(t.fields) };
-          blocks.splice(index, 0, b);
-          selected = b.id;
-          dlg.close();
-          renderBlocks();
-          save();
-          requestAnimationFrame(() => {
-            const el = list.querySelector(`[data-id="${b.id}"]`);
-            el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            el?.querySelector('input, textarea, [contenteditable]')?.focus();
-          });
-        } },
-          h('span', { class: 'block-option-icon' }, icon(t.icon)),
-          h('span', {}, h('strong', {}, t.label), h('small', {}, t.description))))),
+      body: h('div', {},
+        reusable.length ? [
+          h('h3', { class: 'picker-group' }, 'Your reusable sections'),
+          h('div', { class: 'block-picker' }, reusable.map((sh) => option('link', sh.name,
+            `${types[sh.block.type]?.label || 'Section'} · ${sh.uses ? `on ${sh.uses} page${sh.uses > 1 ? 's' : ''}` : 'not used yet'}`,
+            () => insert({ id: uid(), type: 'shared', data: { ref: sh.id } }),
+            iconButton('trash', 'Delete from library', (e) => { e.stopPropagation(); removeShared(sh); }, 'danger option-delete')))),
+          h('h3', { class: 'picker-group' }, 'New section'),
+        ] : null,
+        h('div', { class: 'block-picker' }, schema.blocks.filter((t) => !t.hidden).map((t) =>
+          option(t.icon, t.label, t.description, () => insert({ id: uid(), type: t.type, data: defaultsFor(t.fields) }))))),
     });
   };
 

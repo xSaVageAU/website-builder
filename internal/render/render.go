@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -62,6 +63,8 @@ type Site struct {
 	Tree  *store.Tree
 	Media map[int64]*store.Media
 	CSS   string // generated stylesheet
+	// Shared holds the reusable sections, by id.
+	Shared map[string]blocks.Block
 	// CSSVersion busts caches when the design changes.
 	CSSVersion string
 }
@@ -85,7 +88,17 @@ func (r *Renderer) LoadSite(st *store.Store) (*Site, error) {
 	}
 	css := r.CSS(info)
 	sum := sha256.Sum256([]byte(css))
-	return &Site{Info: info, Tree: tree, Media: media, CSS: css, CSSVersion: hex.EncodeToString(sum[:4])}, nil
+	shared, err := st.SharedBlocks()
+	if err != nil {
+		return nil, err
+	}
+	sharedByID := map[string]blocks.Block{}
+	for _, sh := range shared {
+		if list := blocks.Parse(json.RawMessage("[" + string(sh.Block) + "]")); len(list) == 1 {
+			sharedByID[sh.ID] = list[0]
+		}
+	}
+	return &Site{Info: info, Tree: tree, Media: media, Shared: sharedByID, CSS: css, CSSVersion: hex.EncodeToString(sum[:4])}, nil
 }
 
 type NavItem struct {
@@ -288,7 +301,10 @@ type subpage struct {
 }
 
 func (c *pageCtx) blockView(b blocks.Block, page *store.Page) BlockView {
-	t, _ := blocks.Lookup(b.Type)
+	t, ok := blocks.Lookup(b.Type)
+	if !ok { // e.g. "missing": a reference to a deleted reusable section
+		return BlockView{ID: b.ID, Type: b.Type, D: map[string]any{}, Preview: c.mode == Preview}
+	}
 	d := c.resolve(t.Fields, b.Data)
 	switch b.Type {
 	case "subpages":
@@ -310,6 +326,8 @@ func (c *pageCtx) blockView(b blocks.Block, page *store.Page) BlockView {
 		if items, _ := d["items"].([]map[string]any); len(items) == 0 {
 			d["items"] = []map[string]any{}
 		}
+	case "contact":
+		contactLinks(d)
 	case "html":
 		code, _ := d["code"].(string)
 		d["html"] = template.HTML(code)
@@ -433,7 +451,7 @@ func (r *Renderer) RenderPage(w io.Writer, s *Site, page *store.Page, mode Mode,
 		v.Crumbs = append(v.Crumbs, Crumb{Title: page.Title})
 	}
 
-	list := blocks.Parse(page.Blocks)
+	list, placedAs := s.expandShared(blocks.Parse(page.Blocks))
 	// A hero at the top supplies the h1 itself; otherwise the page title does,
 	// visibly unless the page has its title switched off.
 	heroFirst := len(list) > 0 && list[0].Type == "hero"
@@ -442,6 +460,11 @@ func (r *Renderer) RenderPage(w io.Writer, s *Site, page *store.Page, mode Mode,
 	var sectionCSS strings.Builder
 	for i, b := range list {
 		bv := c.blockView(b, page)
+		if placedAs[i] != "" {
+			// A reusable section keeps the page's own id, so clicking it in the
+			// preview selects the right card in the editor.
+			bv.ID = placedAs[i]
+		}
 		bv.First = i == 0 && heroFirst
 		v.Blocks = append(v.Blocks, bv)
 		if b.CSS != "" {
@@ -673,4 +696,49 @@ func embedPreviewDoc(cssHref, code string) string {
 		`<style>body{min-height:0;display:block;background:transparent}</style></head><body>` + code +
 		`<script>(function(){function s(){parent.postMessage({type:"embed-size",h:document.documentElement.scrollHeight},"*")}` +
 		`new ResizeObserver(s).observe(document.documentElement);addEventListener("load",s);s()})()</script></body></html>`
+}
+
+var phoneChars = regexp.MustCompile(`[^0-9+]`)
+
+// contactLinks adds tap-to-call, tap-to-email, directions and map links for
+// the Contact details section.
+func contactLinks(d map[string]any) {
+	address, _ := d["address"].(string)
+	phone, _ := d["phone"].(string)
+	email, _ := d["email"].(string)
+	q := url.QueryEscape(strings.Join(strings.Fields(address), " "))
+	if q != "" {
+		d["directions"] = template.URL("https://www.google.com/maps/search/?api=1&query=" + q)
+		if show, _ := d["map"].(bool); show {
+			d["mapSrc"] = template.URL("https://maps.google.com/maps?q=" + q + "&output=embed")
+		}
+	}
+	if digits := phoneChars.ReplaceAllString(phone, ""); digits != "" {
+		d["phoneHref"] = template.URL("tel:" + digits)
+	}
+	if strings.Contains(email, "@") && !strings.ContainsAny(email, " <>\"'") {
+		d["emailHref"] = template.URL("mailto:" + strings.TrimSpace(email))
+	}
+}
+
+// expandShared swaps each reusable-section placeholder for the section it
+// points to. placedAs[i] is the page's own block id for swapped entries.
+// A reference to a deleted section becomes a "missing" block, which only
+// shows (as a hint) in the editor preview.
+func (s *Site) expandShared(list []blocks.Block) ([]blocks.Block, []string) {
+	out := make([]blocks.Block, len(list))
+	placedAs := make([]string, len(list))
+	for i, b := range list {
+		out[i] = b
+		if b.Type != "shared" {
+			continue
+		}
+		ref, _ := b.Data["ref"].(string)
+		if sb, ok := s.Shared[ref]; ok && sb.Type != "shared" {
+			out[i], placedAs[i] = sb, b.ID
+		} else {
+			out[i] = blocks.Block{ID: b.ID, Type: "missing", Data: map[string]any{}}
+		}
+	}
+	return out, placedAs
 }

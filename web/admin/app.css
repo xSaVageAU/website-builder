@@ -444,3 +444,13 @@ select.input { padding-right: 28px; }
 .advanced summary .icon { width: 15px; height: 15px; }
 .advanced summary .muted { font-weight: 400; font-size: 12px; }
 .advanced[open] summary { color: var(--text); }
+
+/* Reusable sections */
+.block-card.reusable { border-color: #b2c4ff; }
+.badge.reuse { background: var(--accent-soft); color: var(--accent-text); margin-left: 4px; }
+.shared-banner { display: flex; align-items: center; gap: 12px; margin: 2px 0 14px; padding: 8px 12px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-text); font-size: 12.5px; }
+.picker-group { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 0 8px; }
+.picker-group:not(:first-child) { margin-top: 18px; }
+.block-option-wrap { position: relative; display: grid; }
+.block-option-wrap .option-delete { position: absolute; top: 6px; right: 6px; opacity: 0; }
+.block-option-wrap:hover .option-delete, .block-option-wrap .option-delete:focus-visible { opacity: 1; }

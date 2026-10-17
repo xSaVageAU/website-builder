@@ -38,10 +38,17 @@ type snapPage struct {
 	UpdatedAt   string          `json:"updatedAt"`
 }
 
+type snapShared struct {
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Block json.RawMessage `json:"block"`
+}
+
 type snapshot struct {
-	Site  json.RawMessage `json:"site"`
-	Pages []snapPage      `json:"pages"`
-	Media []int64         `json:"media"`
+	Site   json.RawMessage `json:"site"`
+	Pages  []snapPage      `json:"pages"`
+	Media  []int64         `json:"media"`
+	Shared []snapShared    `json:"shared,omitempty"` // reusable sections
 }
 
 // contentHash ignores timestamps, so identical content always hashes the same.
@@ -60,6 +67,12 @@ func (d *snapshot) hash() string {
 	h.Write(d.Site)
 	for _, p := range d.Pages {
 		fmt.Fprintf(h, "|%d:%s", p.ID, p.contentHash())
+	}
+	// Only when there are any, so versions from before reusable sections hash the same.
+	if len(d.Shared) > 0 {
+		b, _ := json.Marshal(d.Shared)
+		h.Write([]byte("|shared:"))
+		h.Write(b)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -100,6 +113,24 @@ func capture(q querier) (*snapshot, error) {
 		d.Pages = append(d.Pages, p)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	srows, err := q.Query(`SELECT id, name, block FROM shared_blocks ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer srows.Close()
+	for srows.Next() {
+		var sh snapShared
+		var block string
+		if err := srows.Scan(&sh.ID, &sh.Name, &block); err != nil {
+			return nil, err
+		}
+		sh.Block = json.RawMessage(block)
+		d.Shared = append(d.Shared, sh)
+	}
+	if err := srows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -380,6 +411,16 @@ func (s *Store) apply(d *snapshot) error {
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, string(d.Site)); err != nil {
 		return err
 	}
+	// Reusable sections exactly as they were.
+	if _, err := tx.Exec(`DELETE FROM shared_blocks`); err != nil {
+		return err
+	}
+	for _, sh := range d.Shared {
+		if _, err := tx.Exec(`INSERT INTO shared_blocks (id, name, block, updated_at) VALUES (?, ?, ?, ?)`,
+			sh.ID, sh.Name, string(sh.Block), now()); err != nil {
+			return err
+		}
+	}
 	// Images deleted since come back. Images uploaded since stay: the media
 	// library isn't part of an experiment, and losing uploads would surprise.
 	mediaList, _ := json.Marshal(d.Media)
@@ -452,7 +493,10 @@ func (s *Store) Changes() (*Changes, error) {
 		delete(old, p.ID)
 	}
 	c.Deleted = len(old)
-	c.Site = !bytes.Equal(pub.Site, cur.Site)
+	pubShared, _ := json.Marshal(pub.Shared)
+	curShared, _ := json.Marshal(cur.Shared)
+	// Reusable sections count as a site-wide change, like the design.
+	c.Site = !bytes.Equal(pub.Site, cur.Site) || !bytes.Equal(pubShared, curShared)
 	c.Count = len(c.Pages) + c.Deleted
 	if c.Site {
 		c.Count++

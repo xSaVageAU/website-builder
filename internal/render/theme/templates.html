@@ -114,6 +114,9 @@
 {{- else if eq .Type "subpages"}}{{template "b-subpages" .}}
 {{- else if eq .Type "divider"}}{{template "b-divider" .}}
 {{- else if eq .Type "html"}}{{template "b-html" .}}
+{{- else if eq .Type "faq"}}{{template "b-faq" .}}
+{{- else if eq .Type "contact"}}{{template "b-contact" .}}
+{{- else if eq .Type "missing"}}{{if .Preview}}<section class="b"{{template "attrs" .}}><div class="wrap placeholder">This reusable section was deleted. Remove it from the page in the editor.</div></section>{{end}}
 {{- end}}
 {{- end}}
 
@@ -253,6 +256,43 @@
 
 {{define "b-divider"}}
 <section class="b b-divider{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap"><hr></div></section>
+{{end}}
+
+{{define "b-faq"}}
+<section class="b b-faq{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
+  <div class="narrow faq">
+    {{- range .D.items}}{{if .question}}
+    <details>
+      <summary>{{.question}}</summary>
+      <div class="prose">{{.answer}}</div>
+    </details>
+    {{- end}}{{end}}
+  </div>
+</section>
+{{end}}
+
+{{define "b-contact"}}
+{{- if or .D.address .D.phone .D.email .D.hours}}
+<section class="b b-contact{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}>
+  <div class="wrap contact{{if .D.mapSrc}} has-map{{end}}">
+    <dl class="contact-list">
+      {{- with .D.address}}
+      <div><dt>Address</dt><dd>{{.}}<br><a class="more" href="{{$.D.directions}}" target="_blank" rel="noopener">Get directions &rarr;</a></dd></div>{{end}}
+      {{- with .D.phone}}
+      <div><dt>Phone</dt><dd><a href="{{$.D.phoneHref}}">{{.}}</a></dd></div>{{end}}
+      {{- with .D.email}}
+      <div><dt>Email</dt><dd><a href="{{$.D.emailHref}}">{{.}}</a></dd></div>{{end}}
+      {{- with .D.hours}}
+      <div><dt>Opening hours</dt><dd>{{.}}</dd></div>{{end}}
+    </dl>
+    {{- with .D.mapSrc}}
+    <div class="map"><iframe src="{{.}}" title="Map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+    {{- end}}
+  </div>
+</section>
+{{- else if .Preview}}
+<section class="b b-contact{{with .Class}} {{.}}{{end}}"{{template "attrs" .}}><div class="wrap placeholder">Fill in your contact details in the editor</div></section>
+{{- end}}
 {{end}}
 
 {{define "b-html"}}

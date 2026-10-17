@@ -45,6 +45,11 @@ export const api = {
   duplicatePage: (id) => req('POST', `/api/pages/${id}/duplicate`),
   discardPage: (id, save) => req('POST', `/api/pages/${id}/discard`, { save }),
 
+  shared: () => req('GET', '/api/shared'),
+  createShared: (name, block) => req('POST', '/api/shared', { name, block }),
+  updateShared: (id, fields) => req('PUT', `/api/shared/${id}`, fields),
+  deleteShared: (id) => req('DELETE', `/api/shared/${id}`),
+
   versions: () => req('GET', '/api/versions'),
   saveVersion: (label) => req('POST', '/api/versions', { label }),
   restoreVersion: (id, save) => req('POST', `/api/versions/${id}/restore`, { save }),
